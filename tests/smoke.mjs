@@ -25,7 +25,7 @@ try {
   // a how-to sheet pops on first run — close it
   if (await page.locator('#modal.on').count()) { await page.evaluate(() => closeSheet()); await page.waitForTimeout(150); }
   check('reaches hub after tapping splash', await page.locator('#hub.on').count() === 1);
-  check('hub shows 6 mode cards', await page.locator('#modeGrid .mode-card').count() === 6);
+  check('hub shows 7 mode cards', await page.locator('#modeGrid .mode-card').count() === 7);
   check('hub shows the Kingdom rank banner', await page.locator('#rankBanner .rk-name').count() === 1);
 
   const startCoins = await page.evaluate(() => save.coins);
@@ -169,6 +169,26 @@ try {
   await page.evaluate(() => quitToHub()); await page.waitForTimeout(120);
 
   check('hub has a Peak Arcade cross-link', await page.locator('.arcade-link').count() === 1);
+
+  // --- DICE ROYALE (7th game) ---
+  await page.evaluate(() => startMode('dice')); await page.waitForTimeout(250);
+  const diceInit = await page.evaluate(() => cur === 'dice' && !!game && game.pot === 0 && game.d1 >= 1 && game.d2 >= 1);
+  check('Dice Royale inits', diceInit);
+  const diceWin = await page.evaluate(() => {
+    // force a safe (non-7) roll and resolve
+    game.rolling = 0.01; game.d1 = 3; game.d2 = 3;   // doubles, sum 6 (safe)
+    game.update(0.05);
+    return { pot: game.pot, streak: game.streak };
+  });
+  check('Dice: a safe roll grows the pot', diceWin.pot > 0 && diceWin.streak === 1, 'pot ' + diceWin.pot);
+  const diceBust = await page.evaluate(() => {
+    game.over = false; game.rolling = 0.01; game.d1 = 3; game.d2 = 4;   // sum 7 = bust
+    game.update(0.05);
+    return game.over;
+  });
+  check('Dice: rolling a 7 busts the run', diceBust === true);
+  await page.waitForTimeout(700);
+  await page.evaluate(() => { closeSheet(); quitToHub(); }); await page.waitForTimeout(120);
 
   // --- SHOP ---
   await page.evaluate(() => { save.coins = 5000; openShop(); }); await page.waitForTimeout(150);

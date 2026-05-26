@@ -328,8 +328,8 @@
    Shared treasury feeds every mode; spend it in the shop. Faith woven in.
    Mobile-first + mouse/keyboard. No external deps.
    ========================================================================= */
-const VERSION = '2.1';
-const BUILD = '2026-05-26·1800';
+const VERSION = '2.2';
+const BUILD = '2026-05-26·1825';
 const SAVE_KEY = 'ck:save:v1';
 
 /* ---------- persistence ---------- */
@@ -403,8 +403,9 @@ const ACH = [
   ['allskins','Coin Collector','✨','Own 4 coin skins', s=>Object.keys(s.skins).length>=4],
   ['blessed7','Faithful','🙏','Reach a 7-day blessing streak', s=>s.blessStreak>=7],
   ['stack15','Master Builder','🗼','Stack 15 coins high', s=>(s.best.stack||0)>=15],
+  ['dice2000','Dice Daredevil','🎲','Reach a 2,000+ pot in Dice Royale', s=>(s.best.dice||0)>=2000],
   ['kingcoins','King of Coins','👑','Reach the top rank (1.5M lifetime)', s=>(s.rankIdx||0)>=RANKS.length-1],
-  ['allmodes','Kingdom Explorer','🗺️','Play all 6 games', s=>!!s._allmodes]
+  ['allmodes','Kingdom Explorer','🗺️','Play all 7 games', s=>!!s._allmodes]
 ];
 let _earned = 0;
 function totalEarned(){ return _earned; }
@@ -432,7 +433,8 @@ const MODES = [
   { id:'catcher', name:'Coin Catcher', ic:'🧺', desc:'Catch the gold rain. Dodge the bombs. Chain combos.' },
   { id:'toss',    name:'Coin Toss',    ic:'🎯', desc:'Flick coins into cups. Aim, power, swish.' },
   { id:'wheel',   name:'Lucky Spin',   ic:'🎡', desc:'Spin the wheel of fortune for huge multipliers.' },
-  { id:'stack',   name:'Coin Stack',   ic:'🗼', desc:'Time the drop. Stack the coins. Build the tallest tower.' }
+  { id:'stack',   name:'Coin Stack',   ic:'🗼', desc:'Time the drop. Stack the coins. Build the tallest tower.' },
+  { id:'dice',    name:'Dice Royale',  ic:'🎲', desc:'Roll to grow the pot. Doubles = ×2. Bust on a 7. Cash out or ride!' }
 ];
 
 /* ---------- audio (tiny WebAudio) ---------- */
@@ -589,7 +591,7 @@ window.addEventListener('resize', ()=>{ if(screen==='play' && canvasMode()) fitC
 let cur=null;            // current mode id
 let game=null;           // current mode state object
 let running=false, lastT=0;
-function canvasMode(){ return cur==='pusher'||cur==='catcher'||cur==='toss'||cur==='stack'; }
+function canvasMode(){ return cur==='pusher'||cur==='catcher'||cur==='toss'||cur==='stack'||cur==='dice'; }
 
 function loop(t){
   if(!running){ return; }
@@ -623,7 +625,7 @@ function clearCenter(){ document.getElementById('centerToast').innerHTML=''; }
 function startMode(id){
   cur=id; save.stats.plays=(save.stats.plays||0)+1;
   save._modesPlayed=save._modesPlayed||{}; save._modesPlayed[id]=true;
-  if(Object.keys(save._modesPlayed).length>=6) save._allmodes=true;
+  if(Object.keys(save._modesPlayed).length>=7) save._allmodes=true;
   persist();
   document.getElementById('playTitle').textContent=(MODES.find(m=>m.id===id)||{}).name||'Play';
   // show/hide arenas
@@ -640,6 +642,7 @@ function startMode(id){
   else if(id==='flip') initFlip();
   else if(id==='wheel') initWheel();
   else if(id==='stack') initStack();
+  else if(id==='dice') initDice();
   if(canvasMode()){ requestAnimationFrame(()=>{ fitCanvas(); startLoop(); }); }
 }
 function quitToHub(){
@@ -1109,6 +1112,89 @@ function initStack(){
 }
 
 /* ========================================================================
+   7) DICE ROYALE — press your luck. Roll to grow the pot. Doubles ×2.
+      Bust on a 7. Cash out or ride. (the new "dice" pillar 🎲)
+   ======================================================================== */
+function initDice(){
+  const g={ d1:1, d2:1, pot:0, streak:0, mult:1, rolling:0, over:false, t:0, msg:'Tap ROLL — grow the pot, don’t roll a 7!', lastWin:0 };
+  g.update=(dt)=>{
+    g.t+=dt;
+    if(g.rolling>0){ g.rolling-=dt;
+      if(g.rolling>0){ if(Math.random()<0.6){ g.d1=1+(Math.random()*6|0); g.d2=1+(Math.random()*6|0); } }   // tumble
+      else { resolve(); }
+    }
+    updHUDd();
+  };
+  function resolve(){
+    const sum=g.d1+g.d2, dbl=g.d1===g.d2;
+    if(sum===7){ // SEVEN OUT — bust
+      SFX.lose(); shake(); buzz([0,40,30,70]);
+      g.msg='💥 SEVEN OUT! pot busted.';
+      const reached=g.pot;
+      if(save.best.dice==null || reached>save.best.dice){ save.best.dice=reached; save._newBest=true; }
+      if(save.blessing>0) save.blessing=0; persist(); checkAch();
+      g.over=true;
+      setTimeout(()=>runOverSheet('🎲 Dice Royale', reached, 0, 'Rolled a 7 — the one number that busts you. Cash out earlier next time! 🎲'), 650);
+      return;
+    }
+    g.streak++; g.mult = 1 + g.streak*0.15;
+    let gain = Math.round(sum*10*g.mult);
+    let note = '+'+gain;
+    if(dbl){ g.pot = Math.round((g.pot+gain)*2); note='DOUBLES! ×2 🎲'; SFX.big(); confetti(40); buzz(30); }
+    else { g.pot += gain; SFX.coin(); buzz(10); }
+    // milestone every 5 safe rolls
+    if(g.streak%5===0){ const mb=g.streak*25; g.pot+=mb; confetti(30); SFX.win(); note+=' · 🔥 '+g.streak+' SAFE +'+mb; }
+    g.lastWin=gain;
+    g.msg=(dbl?'DOUBLES ('+g.d1+'+'+g.d2+')':'rolled '+sum)+' · pot '+fmt(g.pot)+' (×'+g.mult.toFixed(2)+'). Cash out or ride?';
+    const cx=CW/2, cy=CH*0.34; const [vx,vy]=canvasToView(cx,cy); popText(vx,vy,note,dbl?'#ffd166':'#3ddc84',dbl?20:16);
+    renderDiceBtns();
+  }
+  g.roll=()=>{ if(g.rolling>0||g.over) return; g.rolling=0.75; save.stats.dice=(save.stats.dice||0)+1; SFX.tick(); buzz(8); g.msg='rolling…'; };
+  g.cashOut=()=>{ if(g.rolling>0||g.over||g.pot<=0){ if(g.pot<=0) toast('roll first to build a pot'); return; }
+    const won=addCoins(g.pot); if(save.blessing>0) save.blessing=0;
+    if(save.best.dice==null || g.pot>save.best.dice) save.best.dice=g.pot;
+    save._newBest=true; persist(); SFX.big(); confetti(70); buzz([0,40,40,40]); checkAch();
+    g.over=true; runOverSheet('🎲 Dice Royale', g.pot, won, 'Cashed out at '+g.streak+' safe rolls! Smart money. 💰'); };
+  function updHUDd(){ setHUD(`<div class="hud-chip"><small>POT</small>🪙 ${fmt(g.pot)}</div>
+    <div class="hud-chip"><small>SAFE ROLLS</small>🔥 ${g.streak} · ×${g.mult.toFixed(2)}</div>
+    <div class="hud-chip"><small>BUST ON</small>🎲 7</div>`); }
+  function pip(x,y,r){ ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fillStyle='#1a1208'; ctx.fill(); }
+  function drawDie(cx,cy,s,v,glow){
+    ctx.save();
+    if(glow){ ctx.shadowColor=glow; ctx.shadowBlur=22; }
+    const g2=ctx.createLinearGradient(cx-s/2,cy-s/2,cx+s/2,cy+s/2); g2.addColorStop(0,'#fff8e8'); g2.addColorStop(1,'#e7d6a8');
+    ctx.fillStyle=g2; roundRect(cx-s/2,cy-s/2,s,s,s*0.18); ctx.fill(); ctx.shadowBlur=0;
+    ctx.strokeStyle='rgba(0,0,0,.25)'; ctx.lineWidth=2; ctx.stroke();
+    const o=s*0.26, r=s*0.085, L=cx-o, M=cx, R=cx+o, T=cy-o, C=cy, B=cy+o;
+    const P={1:[[M,C]],2:[[L,T],[R,B]],3:[[L,T],[M,C],[R,B]],4:[[L,T],[R,T],[L,B],[R,B]],5:[[L,T],[R,T],[M,C],[L,B],[R,B]],6:[[L,T],[R,T],[L,C],[R,C],[L,B],[R,B]]};
+    (P[v]||P[1]).forEach(([px,py])=>pip(px,py,r));
+    ctx.restore();
+  }
+  g.draw=()=>{
+    const grd=ctx.createLinearGradient(0,0,0,CH); grd.addColorStop(0,'#1a1530'); grd.addColorStop(1,'#0a0f1e'); ctx.fillStyle=grd; ctx.fillRect(0,0,CW,CH);
+    // felt table circle
+    ctx.beginPath(); ctx.arc(CW/2,CH*0.4,Math.min(CW,CH)*0.34,0,7); ctx.fillStyle='rgba(124,92,255,.08)'; ctx.fill(); ctx.strokeStyle='rgba(124,92,255,.3)'; ctx.lineWidth=2; ctx.stroke();
+    const s=Math.min(74,CW*0.2), gap=s*0.5, cy=CH*0.4, rolling=g.rolling>0;
+    const wob = rolling ? Math.sin(g.t*40)*5 : 0;
+    const dbl = !rolling && g.d1===g.d2;
+    drawDie(CW/2 - s/2 - gap/2, cy+wob, s, g.d1, dbl?'#ffd166':null);
+    drawDie(CW/2 + s/2 + gap/2, cy-wob, s, g.d2, dbl?'#ffd166':null);
+    // sum
+    if(!rolling){ ctx.fillStyle=(g.d1+g.d2===7)?'#ff5d6c':'#fff'; ctx.font='800 16px var(--font)'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('= '+(g.d1+g.d2), CW/2, cy+s*0.92); }
+    // message
+    ctx.fillStyle='var(--soft)'; ctx.fillStyle='#cdd6ea'; ctx.font='600 13px var(--font)'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    wrapText(g.msg, CW/2, CH*0.66, CW*0.8, 18);
+  };
+  function wrapText(text,x,y,maxW,lh){ const words=text.split(' '); let line='',yy=y; for(const w of words){ const t=line+w+' '; if(ctx.measureText(t).width>maxW && line){ ctx.fillText(line,x,yy); line=w+' '; yy+=lh; } else line=t; } ctx.fillText(line,x,yy); }
+  function renderDiceBtns(){ setControls(`<button class="btn" onclick="game.roll()">🎲 ROLL</button><button class="btn sec" onclick="game.cashOut()">💰 CASH OUT ${fmt(g.pot)}</button>`); }
+  g.onQuit=()=>{ if(g.pot>0 && !g.over){ if(save.best.dice==null||g.pot>save.best.dice) save.best.dice=g.pot; if(save.blessing>0) save.blessing=0; persist(); checkAch(); } };
+  bindAction(()=>g.roll());
+  renderDiceBtns();
+  game=g;
+  centerToast('🎲 DICE ROYALE','ROLL to build the pot · DOUBLES = ×2 · a 7 BUSTS you'); setTimeout(clearCenter,2400);
+}
+
+/* ========================================================================
    shared: input binding, helpers, run-over sheet
    ======================================================================== */
 let _pointerHandlers=null, _keyHandler=null, _actionHandler=null;
@@ -1243,7 +1329,7 @@ function openSettings(){
 function toggleSound(){ save.sound=!save.sound; persist(); document.getElementById('swSound').classList.toggle('on',save.sound); if(save.sound) SFX.coin(); }
 function hardReset(){ if(!confirm('Wipe ALL progress — coins, skins, upgrades, goals? This cannot be undone.')) return; localStorage.removeItem(SAVE_KEY); save=JSON.parse(JSON.stringify(DEFAULT_SAVE)); _earned=0; closeSheet(); renderHub(); toast('progress reset'); }
 function openHowTo(){
-  openSheet(`<h2>👑 How to Play</h2><div class="sub">6 games, 1 treasury</div>
+  openSheet(`<h2>👑 How to Play</h2><div class="sub">7 games, 1 treasury</div>
     <div style="font-size:13px;line-height:1.7;color:var(--soft)">
     🎰 <b>Coin Pusher</b> — drag to aim, drop coins, shove the pile so gold falls off the front edge.<br>
     🪙 <b>Flip Streak</b> — call heads/tails, each win doubles your pot. Cash out before you bust!<br>
@@ -1251,7 +1337,8 @@ function openHowTo(){
     🎯 <b>Coin Toss</b> — see the live arc, fling into the cups, hit the moving 💰 bonus cup + chain swishes.<br>
     🎡 <b>Lucky Spin</b> — bet to grow the 🪙 MEGA pot, land MEGA to win it all (free spins from blessings!).<br>
     🧺 <b>Coin Catcher</b> — grab 🧲 magnet / 🛡️ shield / ✨ 2× power-ups while you catch.<br>
-    🗼 <b>Coin Stack</b> — perfect drops regrow your slab + every 10 floors pays a milestone bonus.<br><br>
+    🗼 <b>Coin Stack</b> — perfect drops regrow your slab + every 10 floors pays a milestone bonus.<br>
+    🎲 <b>Dice Royale</b> — roll to grow the pot, DOUBLES double it, but a 7 BUSTS you. Cash out or ride!<br><br>
     Every game feeds <b>one coin bank</b> 🪙 — spend it in the 🛍️ Shop on coin skins + upgrades. Earn coins to climb the 👑 Kingdom Ranks (each rank = a permanent +% coin perk!). Claim your 🙏 Daily Blessing for a 2× boost + free spin. 💎 Gems & the ✝ Faith Corner earn ⭐ Faith Stars.
     </div>
     <div class="row-close"><button class="btn" onclick="closeSheet();save.seenHow=true;persist()">LET'S GO 🪙</button></div>`);
