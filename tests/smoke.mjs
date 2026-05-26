@@ -168,7 +168,7 @@ try {
   check('pusher jackpot meter fills on collect', meter > 0, '+' + meter);
   await page.evaluate(() => quitToHub()); await page.waitForTimeout(120);
 
-  check('hub has a Peak Arcade cross-link', await page.locator('.arcade-link').count() === 1);
+  check('hub has Peak Arcade + The Word cross-links', await page.locator('#arcadeLink').count() === 1 && await page.locator('#wordLink').count() === 1);
 
   // --- DICE ROYALE (7th game) ---
   await page.evaluate(() => startMode('dice')); await page.waitForTimeout(250);
