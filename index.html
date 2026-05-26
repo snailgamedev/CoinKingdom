@@ -62,16 +62,22 @@
   .blessing-banner .bb-t{ font-size:13px; font-weight:700; }
   .blessing-banner .bb-s{ font-size:11px; color:var(--soft); }
   .modes-label{ font-size:10px; letter-spacing:3px; color:var(--muted); margin:6px 2px 10px; }
+  .hub-tip{ margin:14px 0 2px; padding:11px 14px; border-radius:12px; border:1px dashed var(--bg-3); background:rgba(255,255,255,.02); font-size:12px; line-height:1.5; color:var(--soft); cursor:pointer; text-align:center; }
+  .hub-tip b{ color:var(--gold-2); }
   .mode-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
   @media(min-width:620px){ .mode-grid{ grid-template-columns:1fr 1fr 1fr; } }
   .mode-card{ position:relative; border-radius:16px; padding:16px 14px 14px; cursor:pointer; overflow:hidden; border:1px solid var(--bg-3);
     background:linear-gradient(180deg,var(--bg-2),var(--bg-1)); box-shadow:var(--shadow); transition:transform .12s ease; }
+  .mode-card{ --mc:var(--gold); transition:transform .12s ease, box-shadow .2s ease, border-color .2s ease; }
+  .mode-card:hover{ border-color:var(--mc); box-shadow:0 14px 34px -14px var(--mc); transform:translateY(-2px); }
   .mode-card:active{ transform:scale(.97); }
-  .mode-card .mc-ic{ font-size:38px; line-height:1; }
+  .mode-card .mc-accent{ position:absolute; top:0; left:0; right:0; height:3px; background:linear-gradient(90deg,var(--mc),transparent 85%); }
+  .mode-card .mc-ic{ font-size:40px; line-height:1; filter:drop-shadow(0 3px 10px color-mix(in srgb, var(--mc) 60%, transparent)); }
   .mode-card .mc-name{ font-family:var(--arcade); font-size:15px; margin-top:8px; letter-spacing:.5px; }
   .mode-card .mc-desc{ font-size:11px; color:var(--muted); margin-top:3px; line-height:1.35; min-height:30px; }
-  .mode-card .mc-best{ font-size:10px; color:var(--gold); margin-top:7px; letter-spacing:.5px; }
-  .mode-card .mc-glow{ position:absolute; inset:0; border-radius:16px; pointer-events:none; box-shadow:inset 0 0 0 1px rgba(245,197,66,.18); }
+  .mode-card .mc-best{ font-size:10px; color:var(--muted); margin-top:9px; letter-spacing:.5px; font-weight:700; }
+  .mode-card .mc-best.played{ display:inline-block; color:var(--mc); background:color-mix(in srgb, var(--mc) 14%, transparent); border:1px solid color-mix(in srgb, var(--mc) 35%, transparent); padding:3px 8px; border-radius:999px; }
+  .mode-card .mc-glow{ position:absolute; inset:0; border-radius:16px; pointer-events:none; box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--mc) 22%, transparent); }
   .mode-card.locked{ opacity:.55; }
   .mode-card .mc-lock{ position:absolute; top:10px; right:12px; font-size:14px; }
   .hub-row{ display:flex; gap:10px; margin-top:16px; }
@@ -256,6 +262,7 @@
       </div>
       <div class="modes-label">▸ PICK YOUR GAME</div>
       <div class="mode-grid" id="modeGrid"></div>
+      <div class="hub-tip" id="hubTip" onclick="nextHubTip()"></div>
       <div class="hub-row">
         <div class="big-btn gold" onclick="openShop()">🛍️ SHOP</div>
         <div class="big-btn" onclick="openFaith()">✝ FAITH</div>
@@ -329,8 +336,8 @@
    Shared treasury feeds every mode; spend it in the shop. Faith woven in.
    Mobile-first + mouse/keyboard. No external deps.
    ========================================================================= */
-const VERSION = '2.3';
-const BUILD = '2026-05-26·1908';
+const VERSION = '2.4';
+const BUILD = '2026-05-26·1956';
 const SAVE_KEY = 'ck:save:v1';
 
 /* ---------- persistence ---------- */
@@ -429,13 +436,13 @@ function rankInfo(){ const lt=save.lifetime||0; const i=rankIndexFor(lt); const 
   return { i, cur, nxt, prog, lt }; }
 
 const MODES = [
-  { id:'pusher',  name:'Coin Pusher',  ic:'🎰', desc:'Drop coins, push the pile, cascade gold off the edge.' },
-  { id:'flip',    name:'Flip Streak',  ic:'🪙', desc:'Call heads or tails. Stack a streak. Risk it all.' },
-  { id:'catcher', name:'Coin Catcher', ic:'🧺', desc:'Catch the gold rain. Dodge the bombs. Chain combos.' },
-  { id:'toss',    name:'Coin Toss',    ic:'🎯', desc:'Flick coins into cups. Aim, power, swish.' },
-  { id:'wheel',   name:'Lucky Spin',   ic:'🎡', desc:'Spin the wheel of fortune for huge multipliers.' },
-  { id:'stack',   name:'Coin Stack',   ic:'🗼', desc:'Time the drop. Stack the coins. Build the tallest tower.' },
-  { id:'dice',    name:'Dice Royale',  ic:'🎲', desc:'Roll to grow the pot. Doubles = ×2. Bust on a 7. Cash out or ride!' }
+  { id:'pusher',  name:'Coin Pusher',  ic:'🎰', ac:'#f5c542', desc:'Drop coins, push the pile, cascade gold off the edge.' },
+  { id:'flip',    name:'Flip Streak',  ic:'🪙', ac:'#5fb6ff', desc:'Call heads or tails. Stack a streak. Risk it all.' },
+  { id:'catcher', name:'Coin Catcher', ic:'🧺', ac:'#3ddc84', desc:'Catch the gold rain. Dodge the bombs. Chain combos.' },
+  { id:'toss',    name:'Coin Toss',    ic:'🎯', ac:'#b98cff', desc:'Flick coins into cups. Aim, power, swish.' },
+  { id:'wheel',   name:'Lucky Spin',   ic:'🎡', ac:'#ff5d6c', desc:'Spin the wheel of fortune for huge multipliers.' },
+  { id:'stack',   name:'Coin Stack',   ic:'🗼', ac:'#ffd166', desc:'Time the drop. Stack the coins. Build the tallest tower.' },
+  { id:'dice',    name:'Dice Royale',  ic:'🎲', ac:'#a78bfa', desc:'Roll to grow the pot. Doubles = ×2. Bust on a 7. Cash out or ride!' }
 ];
 
 /* ---------- audio (tiny WebAudio) ---------- */
@@ -548,12 +555,33 @@ function renderHub(){
   MODES.forEach(m=>{
     const best=save.best[m.id];
     const card=document.createElement('div'); card.className='mode-card'; card.onclick=()=>startMode(m.id);
-    card.innerHTML=`<div class="mc-glow"></div><div class="mc-ic">${m.ic}</div><div class="mc-name">${m.name}</div>
-      <div class="mc-desc">${m.desc}</div><div class="mc-best">${best!=null?('best · '+fmt(best)+(m.id==='flip'?' streak':'')):'not played yet'}</div>`;
+    card.style.setProperty('--mc', m.ac);
+    const bestTxt = best!=null ? ('🏆 best · '+fmt(best)+(m.id==='flip'?' streak':'')) : 'tap to play ▸';
+    card.innerHTML=`<div class="mc-accent"></div><div class="mc-glow"></div><div class="mc-ic">${m.ic}</div><div class="mc-name">${m.name}</div>
+      <div class="mc-desc">${m.desc}</div><div class="mc-best${best!=null?' played':''}">${bestTxt}</div>`;
     grid.appendChild(card);
   });
   document.getElementById('hubFoot').textContent='v'+VERSION+' · '+Object.keys(save.skins).length+' skins · '+Object.values(save.ach).filter(Boolean).length+'/'+ACH.length+' goals';
+  renderHubTip();
 }
+// rotating tip / gentle verse strip — peak-moment + the G, present never forced (tap for another)
+const HUB_TIPS = [
+  '💡 <b>Tip:</b> in Coin Pusher, drop coins on the FRONT edge of the pile for a faster cascade.',
+  '💡 <b>Tip:</b> Flip Streak doubles your pot each win — cash out before greed bites.',
+  '💡 <b>Tip:</b> grab the 🧲 magnet in Catcher to vacuum up a whole wave of gold.',
+  '💡 <b>Tip:</b> in Dice Royale, every roll could hit a 7 — bank a fat pot while it’s safe.',
+  '💡 <b>Tip:</b> perfect Coin Stack drops REGROW your slab — line up the edges exactly.',
+  '💡 <b>Tip:</b> climb the 👑 Kingdom ranks — each rank pays you +5% more coins, forever.',
+  '💡 <b>Tip:</b> claim your 🙏 Daily Blessing for free coins, a 2× boost AND a free spin.',
+  '✝ <b>“For where your treasure is, there will your heart be also.”</b> — Matthew 6:21',
+  '✝ <b>“The blessing of the Lord, it maketh rich, and he addeth no sorrow with it.”</b> — Proverbs 10:22',
+  '✝ <b>“Give, and it shall be given unto you... pressed down, and running over.”</b> — Luke 6:38',
+  '✝ The real treasure isn’t the coin count — tap <b>✝ THE WORD</b> below. 🙏'
+];
+let _hubTipIx = Math.floor(Math.random()*HUB_TIPS.length);
+function renderHubTip(){ const el=document.getElementById('hubTip'); if(el) el.innerHTML=HUB_TIPS[_hubTipIx % HUB_TIPS.length]; }
+function nextHubTip(){ _hubTipIx=(_hubTipIx+1)%HUB_TIPS.length; renderHubTip(); }
+window.nextHubTip=nextHubTip;
 function todayStr(){ const d=new Date(); return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); }
 function claimBlessing(){
   const today=todayStr();
@@ -759,7 +787,7 @@ function initPusher(){
   setControls(`<button class="btn wide" onclick="game.drop()">🪙 DROP COIN</button>`);
   game=g;
   centerToast('COIN PUSHER','drag to aim · drop coins · push gold off the edge');
-  setTimeout(clearCenter,2200);
+  setTimeout(clearCenter,1500);
 }
 
 /* ========================================================================
@@ -826,7 +854,7 @@ function initCatcher(){
   bindStagePointer({ move:(x)=>{ g.bx=Math.max(g.bw/2,Math.min(CW-g.bw/2,x)); }, down:(x)=>{ g.bx=Math.max(g.bw/2,Math.min(CW-g.bw/2,x)); } });
   bindKeys((dir)=>{ g.bx=Math.max(g.bw/2,Math.min(CW-g.bw/2,g.bx+dir*36)); });
   setControls(`<button class="btn sec" onclick="game.bx=Math.max(game.bw/2,game.bx-46)">◀</button><button class="btn sec" onclick="game.bx=Math.min(CW-game.bw/2,game.bx+46)">▶</button>`);
-  game=g; centerToast('CATCH THE GOLD','drag/arrows to move · dodge 💣 · gold = 25'); setTimeout(clearCenter,2200);
+  game=g; centerToast('CATCH THE GOLD','drag/arrows to move · dodge 💣 · gold = 25'); setTimeout(clearCenter,1500);
 }
 
 /* ========================================================================
@@ -900,7 +928,7 @@ function initToss(){
       g.flying={ x:g.sx, y:g.sy, vx:lv.vx, vy:lv.vy, spin:0 };
     }
   });
-  game=g; centerToast('COIN TOSS','drag back from the coin & release to fling'); setTimeout(clearCenter,2400);
+  game=g; centerToast('COIN TOSS','drag back from the coin & release to fling'); setTimeout(clearCenter,1500);
 }
 
 /* ========================================================================
@@ -1120,7 +1148,7 @@ function initStack(){
   bindAction(()=>g.place());
   setControls(`<button class="btn wide" onclick="game.place()">⬇ DROP</button>`);
   game=g;
-  centerToast('🗼 COIN STACK','tap / DROP to stack · line up the edges'); setTimeout(clearCenter,2200);
+  centerToast('🗼 COIN STACK','tap / DROP to stack · line up the edges'); setTimeout(clearCenter,1500);
 }
 
 /* ========================================================================
@@ -1203,7 +1231,7 @@ function initDice(){
   bindAction(()=>g.roll());
   renderDiceBtns();
   game=g;
-  centerToast('🎲 DICE ROYALE','ROLL to build the pot · DOUBLES = ×2 · a 7 BUSTS you'); setTimeout(clearCenter,2400);
+  centerToast('🎲 DICE ROYALE','ROLL to build the pot · DOUBLES = ×2 · a 7 BUSTS you'); setTimeout(clearCenter,1500);
 }
 
 /* ========================================================================
