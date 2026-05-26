@@ -264,7 +264,7 @@
         <div class="big-btn" onclick="openAch()">🏆 GOALS</div>
         <div class="big-btn" onclick="openSettings()">⚙️ SETTINGS</div>
       </div>
-      <a class="arcade-link" href="https://snailgamedev.github.io/PeakArcade/" target="_top">🎮 MORE GAMES AT <b>PEAK ARCADE</b> →</a>
+      <a class="arcade-link" id="arcadeLink" href="https://snailgamedev.github.io/PeakArcade/">🎮 MORE GAMES AT <b>PEAK ARCADE</b> →</a>
       <div class="hub-foot">
         <span id="hubFoot"></span> · <a onclick="openHowTo()">how to play</a>
       </div>
@@ -328,8 +328,8 @@
    Shared treasury feeds every mode; spend it in the shop. Faith woven in.
    Mobile-first + mouse/keyboard. No external deps.
    ========================================================================= */
-const VERSION = '2.0';
-const BUILD = '2026-05-26·1720';
+const VERSION = '2.1';
+const BUILD = '2026-05-26·1800';
 const SAVE_KEY = 'ck:save:v1';
 
 /* ---------- persistence ---------- */
@@ -867,8 +867,14 @@ function initToss(){
       // power meter
       const pw=Math.min(1,lv.power/195); ctx.fillStyle='rgba(255,255,255,.15)'; roundRect(20,CH-24,CW-40,8,4); ctx.fill(); ctx.fillStyle=pw>0.85?'#ff5d6c':'#f5c542'; roundRect(20,CH-24,(CW-40)*pw,8,4); ctx.fill();
     }
-    // coin
-    if(g.coin) drawCoin(g.coin.x,g.coin.y,g.coin.r);
+    // coin — gentle idle bob + a pulsing "drag back" hint when it's waiting on you
+    if(g.coin){
+      const idle = !g.aiming && !g.flying;
+      const by = idle ? Math.sin(g.t*3)*3 : 0;
+      drawCoin(g.coin.x, g.coin.y+by, g.coin.r);
+      if(idle){ const a=0.4+Math.sin(g.t*3)*0.3; ctx.fillStyle='rgba(245,197,66,'+a+')'; ctx.font='700 11px var(--font)'; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText('drag back & release ↑', g.coin.x, g.coin.y+by+g.coin.r+18); }
+    }
   };
   bindStagePointer({
     down:(x,y)=>{ if(g.flying||g.left<=0) return; if(Math.hypot(x-g.sx,y-g.sy)<70){ g.aiming=true; g.ax=x; g.ay=y; } },
@@ -1257,11 +1263,19 @@ function closeSheet(){ document.getElementById('modal').classList.remove('on'); 
 document.getElementById('modal').addEventListener('click', e=>{ if(e.target.id==='modal') closeSheet(); });
 
 /* ---------- boot ---------- */
+// running INSIDE the Peak Arcade hub iframe? then the "back to arcade" link is redundant + reloads the
+// whole hub (looked like a freeze) — hide it; the hub's own ✕ button handles return.
+const EMBEDDED = (()=>{ try{ return window.self !== window.top; }catch(e){ return true; } })();
 function boot(){
   const [vt,vr]=verseOfDay();
   document.getElementById('splashVerse').innerHTML=vt+'<br><span style="color:var(--gold)">— '+vr+'</span>';
   document.getElementById('splashFoot').textContent='v'+VERSION+' · build '+BUILD;
-  document.getElementById('splash').addEventListener('click', ()=>{ ac(); goto('hub'); if(!save.seenHow) openHowTo(); }, {once:true});
+  if(EMBEDDED){ const al=document.getElementById('arcadeLink'); if(al) al.style.display='none'; }
+  // gentle gold coin-shower behind the splash (peak-moment first impression)
+  const shower=setInterval(()=>{ const sk=SKINS[save.skin]||SKINS.classic;
+    parts.push({ x:Math.random()*FW, y:-12, vx:(Math.random()-0.5)*0.6, vy:1.4+Math.random()*1.6, g:0.05, life:2.2, s:6+Math.random()*5, c:[sk.c1,sk.c2,sk.c3][(Math.random()*3)|0], shape:'circle', rot:Math.random()*6, vr:(Math.random()-0.5)*0.3 }); fxStart();
+  }, 220);
+  document.getElementById('splash').addEventListener('click', ()=>{ clearInterval(shower); ac(); goto('hub'); if(!save.seenHow) openHowTo(); }, {once:true});
   checkAch();
 }
 boot();
