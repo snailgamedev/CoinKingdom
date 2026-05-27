@@ -340,8 +340,8 @@
    Shared treasury feeds every mode; spend it in the shop. Faith woven in.
    Mobile-first + mouse/keyboard. No external deps.
    ========================================================================= */
-const VERSION = '2.9';
-const BUILD = '2026-05-27·1710';
+const VERSION = '2.10';
+const BUILD = '2026-05-27·1737';
 const SAVE_KEY = 'ck:save:v1';
 
 /* ---------- persistence ---------- */
@@ -359,6 +359,7 @@ const DEFAULT_SAVE = {
   megaJackpot: 2000, freeSpins: 0,
   stats: { flips:0, drops:0, catches:0, tosses:0, spins:0, plays:0, stacks:0 },
   bank: 0, bankTs: null, _interestEarned: 0, _taxPaid: 0,   // 🏦 real-life economy
+  loan: 0, loanTs: null, _interestPaid: 0,                  // 💳 debt
   seenHow: false
 };
 let save = load();
@@ -520,12 +521,18 @@ function fmt(n){ n=Math.floor(n); if(n>=1e6) return (n/1e6).toFixed(n>=1e7?0:1)+
 /* ---------- economy ---------- */
 function rankBonus(){ return (save.rankIdx||0)*0.05; }   // RANK PERK: +5% coins per rank climbed
 function luckMult(){ return 1 + (save.upg.luck||0)*0.08 + rankBonus(); }
-const TAX_BRACKET=5000, TAX_RATE=0.10, BANK_RATE=0.03;   // 👑 10% tax on big single wins · 🏦 3%/day interest
+const TAX_BRACKET=5000, BANK_RATE=0.03, LOAN_RATE=0.05;   // 🏦 3%/day savings · 💳 5%/day debt (grows faster — like real life)
+// 👑 PROGRESSIVE income tax on a single win — brackets, just like the real thing
+function taxFor(n){ if(n<TAX_BRACKET) return 0; let t=0;
+  const b1=Math.min(n,20000)-5000;   if(b1>0) t+=b1*0.08;   // 5k–20k  @ 8%
+  const b2=Math.min(n,100000)-20000; if(b2>0) t+=b2*0.15;   // 20k–100k @ 15%
+  const b3=n-100000;                 if(b3>0) t+=b3*0.25;   // 100k+   @ 25%
+  return Math.round(t); }
 function addCoins(n, boostable=true){
   n = Math.round(n * luckMult() * (boostable && save.blessing>0 ? 2 : 1));
-  // 👑 KINGDOM TAX — real-life income tax, but ONLY on the big single wins (small earns stay untaxed; admin grants exempt)
-  if(boostable && n>=TAX_BRACKET){ const tax=Math.round(n*TAX_RATE); n-=tax; save._taxPaid=(save._taxPaid||0)+tax;
-    if(typeof toast==='function') toast('👑 Kingdom tax —'+fmt(tax)+' ('+Math.round(TAX_RATE*100)+'% on big wins) · stash it in the 🏦 Bank to grow it'); }
+  // 👑 KINGDOM TAX — progressive, only on big single wins (small earns untaxed; admin grants exempt)
+  if(boostable && n>=TAX_BRACKET){ const tax=taxFor(n); if(tax>0){ n-=tax; save._taxPaid=(save._taxPaid||0)+tax;
+    if(typeof toast==='function') toast('👑 Kingdom tax —'+fmt(tax)+' (progressive) · stash gold in the 🏦 Bank to grow it tax-free'); } }
   save.coins += n; _earned += Math.max(0,n);
   if(n>0){ save.lifetime=(save.lifetime||0)+n; const ri=rankIndexFor(save.lifetime); if(ri>(save.rankIdx||0)){ save.rankIdx=ri; rankUp(RANKS[ri]); } }
   updatePurse(); persist(); checkAch(); return n;
@@ -549,13 +556,32 @@ function accrueInterest(){
 }
 function bankDeposit(n){ accrueInterest(); if(n==='all') n=save.coins; n=Math.min(n,save.coins); if(n<=0){ toast('nothing to deposit 🪙'); return; } save.coins-=n; save.bank=(save.bank||0)+n; if(!save.bankTs) save.bankTs=Date.now(); updatePurse(); persist(); try{SFX.coin();}catch(e){} openBank(); }
 function bankWithdraw(n){ accrueInterest(); if(n==='all') n=save.bank||0; n=Math.min(n,save.bank||0); if(n<=0){ toast('the bank is empty 🏦'); return; } save.bank-=n; save.coins+=n; updatePurse(); persist(); try{SFX.coin();}catch(e){} openBank(); }
+/* 💳 LOANS — borrow against your worth, but debt compounds FASTER than savings (5%/day) · real-life money */
+function netWorth(){ return (save.coins||0)+(save.bank||0)-(save.loan||0); }
+function loanCap(){ return Math.max(10000, Math.round(((save.coins||0)+(save.bank||0))*1.5)); }   // credit limit = 1.5× liquid
+function accrueLoan(){
+  if(!save.loan||save.loan<=0){ if(!save.loanTs) save.loanTs=Date.now(); return 0; }
+  const now=Date.now(); let days=(now-(save.loanTs||now))/86400000; if(days<=0) return 0; days=Math.min(days,30);
+  const before=save.loan; save.loan=Math.round(save.loan*Math.pow(1+LOAN_RATE,days)); save.loanTs=now;
+  const added=save.loan-before; if(added>0){ save._interestPaid=(save._interestPaid||0)+added; persist(); }
+  return added;
+}
+function borrow(n){ accrueLoan(); const avail=loanCap()-(save.loan||0); n=Math.min(n,avail);
+  if(n<=0){ toast('🚫 credit maxed — cap is 🪙 '+fmt(loanCap())); return; }
+  save.loan=(save.loan||0)+n; save.coins+=n; if(!save.loanTs) save.loanTs=Date.now(); updatePurse(); persist(); try{SFX.coin();}catch(e){}
+  toast('💳 borrowed 🪙 '+fmt(n)+' · debt grows '+Math.round(LOAN_RATE*100)+'%/day — pay it back!'); openBank(); }
+function repay(n){ accrueLoan(); if(n==='all') n=Math.min(save.loan||0,save.coins); n=Math.min(n,save.loan||0,save.coins);
+  if(n<=0){ toast((save.loan||0)>0?'not enough coins to repay':'🎉 no debt to pay'); return; }
+  save.loan-=n; save.coins-=n; updatePurse(); persist(); try{SFX.coin();}catch(e){}
+  toast('✅ repaid 🪙 '+fmt(n)+((save.loan||0)<=0?' · debt CLEARED! 🙌':' · 🪙 '+fmt(save.loan)+' left')); openBank(); }
 function openBank(){
-  const gained=accrueInterest();
-  openSheet(`<h2>🏦 The Royal Bank</h2><div class="sub">stash your gold — it earns ${Math.round(BANK_RATE*100)}% interest every day 📈</div>
+  const gained=accrueInterest(); const owed=accrueLoan(); const debt=save.loan||0; const nw=netWorth();
+  openSheet(`<h2>🏦 The Royal Bank</h2><div class="sub">save gold (earns ${Math.round(BANK_RATE*100)}%/day 📈) · borrow gold (costs ${Math.round(LOAN_RATE*100)}%/day 💳)</div>
     <div class="rank-banner" style="margin:6px 0 10px"><div class="rk-ic">🏦</div><div class="rk-body">
-      <div class="rk-name">Balance · 🪙 ${fmt(save.bank||0)}</div>
-      <div class="rk-next">purse: 🪙 ${fmt(save.coins)} · interest earned all-time: 🪙 ${fmt(save._interestEarned||0)}${(save._taxPaid||0)>0?' · 👑 tax paid: 🪙 '+fmt(save._taxPaid):''}</div></div></div>
+      <div class="rk-name">Net Worth · 🪙 ${fmt(nw)}</div>
+      <div class="rk-next">purse 🪙 ${fmt(save.coins)} · 🏦 ${fmt(save.bank||0)}${debt>0?' · 💳 debt 🪙 '+fmt(debt):''} · 📈 earned ${fmt(save._interestEarned||0)}${(save._taxPaid||0)>0?' · 👑 tax '+fmt(save._taxPaid):''}</div></div></div>
     ${gained>0?`<div class="hub-tip" style="border-color:var(--green);color:var(--green)">📈 +${fmt(gained)} interest earned while you were away!</div>`:''}
+    ${owed>0?`<div class="hub-tip" style="border-color:var(--red);color:var(--red)">💳 your debt grew by ${fmt(owed)} — pay it down!</div>`:''}
     <div style="margin:8px 0 4px;font-size:11px;letter-spacing:2px;color:var(--muted)">💰 DEPOSIT · purse → bank</div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
       <button class="btn sec" onclick="bankDeposit(1000)">1K</button><button class="btn sec" onclick="bankDeposit(10000)">10K</button>
@@ -564,8 +590,13 @@ function openBank(){
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
       <button class="btn sec" onclick="bankWithdraw(1000)">1K</button><button class="btn sec" onclick="bankWithdraw(10000)">10K</button>
       <button class="btn sec" onclick="bankWithdraw(100000)">100K</button><button class="btn" onclick="bankWithdraw('all')">ALL</button></div>
-    <div class="sub" style="text-align:center;margin-top:12px;line-height:1.5">💸 Real-life money moves: single wins over ${fmt(TAX_BRACKET)} get a ${Math.round(TAX_RATE*100)}% 👑 Kingdom tax — but gold in the Bank just <b>grows, tax-free</b>.</div>
-    <div class="sub" style="text-align:center;margin-top:6px;font-style:italic">“The plans of the diligent lead surely to abundance.” — Proverbs 21:5 🙏</div>
+    <div style="margin:14px 0 4px;font-size:11px;letter-spacing:2px;color:var(--muted)">💳 LOANS · credit limit 🪙 ${fmt(loanCap())} · debt costs ${Math.round(LOAN_RATE*100)}%/day</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px">
+      <button class="btn sec" onclick="borrow(5000)">＋5K</button><button class="btn sec" onclick="borrow(25000)">＋25K</button>
+      <button class="btn ${debt>0?'':'sec'}" onclick="repay(10000)" ${debt>0?'':'disabled'}>−10K</button>
+      <button class="btn ${debt>0?'':'sec'}" onclick="repay('all')" ${debt>0?'':'disabled'}>PAY OFF</button></div>
+    <div class="sub" style="text-align:center;margin-top:12px;line-height:1.5">💸 Real money moves: big single wins get a <b>progressive 👑 tax</b> (8% → 15% → 25%) · savings grow tax-free · debt grows faster than savings, so borrow wisely.</div>
+    <div class="sub" style="text-align:center;margin-top:6px;font-style:italic">“The rich ruleth over the poor, and the borrower is servant to the lender.” — Proverbs 22:7 🙏</div>
     <div class="row-close"><button class="btn sec" onclick="closeSheet()">CLOSE</button></div>`);
 }
 function updatePurse(){
@@ -1602,7 +1633,7 @@ document.getElementById('modal').addEventListener('click', e=>{ if(e.target.id==
 // whole hub (looked like a freeze) — hide it; the hub's own ✕ button handles return.
 const EMBEDDED = (()=>{ try{ return window.self !== window.top; }catch(e){ return true; } })();
 function boot(){
-  accrueInterest();   // 🏦 bank gold grows while you're away
+  accrueInterest(); accrueLoan();   // 🏦 bank gold grows · 💳 debt grows · while you're away
   const [vt,vr]=verseOfDay();
   document.getElementById('splashVerse').innerHTML=vt+'<br><span style="color:var(--gold)">— '+vr+'</span>';
   document.getElementById('splashFoot').textContent='v'+VERSION+' · build '+BUILD;

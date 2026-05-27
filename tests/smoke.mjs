@@ -260,11 +260,24 @@ try {
   check('Bank: withdraw-all empties the bank', bank.finalBank === 0);
   const tax = await page.evaluate(() => {
     save.coins = 0; save.rankIdx = 0; save.blessing = 0; save.upg = {}; save._taxPaid = 0;
-    const got = addCoins(10000);                         // big win → taxed 10%
-    return { got, taxPaid: save._taxPaid };
+    const got = addCoins(10000);                         // 10k win → progressive: (10k-5k)*8% = 400
+    return { got, taxPaid: save._taxPaid, smallTax: (()=>{ const t=save._taxPaid; addCoins(1000); return save._taxPaid-t; })() };
   });
-  check('Kingdom tax skims 10% of a big win', tax.got === 9000 && tax.taxPaid === 1000, 'net ' + tax.got + ', tax ' + tax.taxPaid);
-  await page.evaluate(() => { closeSheet(); save.bank = 0; save.coins = 100; persist(); });
+  check('Progressive tax: 10k win taxed 400 (8% bracket)', tax.got === 9600 && tax.taxPaid === 400, 'net ' + tax.got + ', tax ' + tax.taxPaid);
+  check('Small wins are NOT taxed', tax.smallTax === 0, 'tax added ' + tax.smallTax);
+  const loan = await page.evaluate(() => {
+    save.coins = 20000; save.bank = 0; save.loan = 0; save.loanTs = Date.now();
+    borrow(10000);                                       // +10k coins, +10k debt
+    const afterBorrow = { coins: save.coins, loan: save.loan };
+    save.loanTs = Date.now() - 86400000;                 // 1 day passes
+    const grew = accrueLoan();                           // 5%/day on 10k ≈ 500
+    repay('all');
+    return { afterBorrow, grew, finalLoan: save.loan };
+  });
+  check('Loan: borrowing adds coins + debt', loan.afterBorrow.coins === 30000 && loan.afterBorrow.loan === 10000);
+  check('Loan: debt grows 5%/day (faster than savings)', loan.grew > 0, '+' + loan.grew);
+  check('Loan: pay-off clears the debt', loan.finalLoan === 0);
+  await page.evaluate(() => { closeSheet(); save.bank = 0; save.loan = 0; save.coins = 100; persist(); });
 
   // --- 👑 ADMIN THRONE ---
   const adm = await page.evaluate(() => {
