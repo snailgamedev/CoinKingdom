@@ -339,8 +339,8 @@
    Shared treasury feeds every mode; spend it in the shop. Faith woven in.
    Mobile-first + mouse/keyboard. No external deps.
    ========================================================================= */
-const VERSION = '2.6';
-const BUILD = '2026-05-27·1552';
+const VERSION = '2.7';
+const BUILD = '2026-05-27·1617';
 const SAVE_KEY = 'ck:save:v1';
 
 /* ---------- persistence ---------- */
@@ -884,9 +884,11 @@ function initToss(){
     for(const tg of g.targets){ if(tg.bonus){ tg.x+=tg.vx*dt; if(tg.x<tg.w/2){ tg.x=tg.w/2; tg.vx*=-1; } if(tg.x>CW-tg.w/2){ tg.x=CW-tg.w/2; tg.vx*=-1; } } }
     if(g.flying){ const f=g.flying; f.vy+=GRAV*dt; f.x+=f.vx*dt; f.y+=f.vy*dt; f.spin+=0.3;
       let scored=false;
-      for(const tg of g.targets){ if(f.y> tg.y-6 && f.y< tg.y+30 && Math.abs(f.x-tg.x)<tg.w/2){
-        g.combo++; const mult=1+(g.combo-1)*0.5; const val=Math.round(tg.val*mult); g.score+=val;
-        const [vx,vy]=canvasToView(tg.x,tg.y); popText(vx,vy,(tg.bonus?'💰 BONUS ':'SWISH ')+'+'+val+(g.combo>1?' (×'+mult+')':''),tg.bonus?'#ffd166':'#3ddc84',18);
+      // only land on the way DOWN (f.vy>0) so a coin arced at a HIGHER cup isn't intercepted by a lower one on the way up
+      for(const tg of g.targets){ if(f.vy>0 && f.y> tg.y-6 && f.y< tg.y+30 && Math.abs(f.x-tg.x)<tg.w/2){
+        const perfect=Math.abs(f.x-tg.x) < tg.w*0.22;   // dead-center = 🎯 PERFECT swish
+        g.combo++; let mult=1+(g.combo-1)*0.5; if(perfect) mult+=0.5; const val=Math.round(tg.val*mult); g.score+=val;
+        const [vx,vy]=canvasToView(tg.x,tg.y); popText(vx,vy,(perfect?'🎯 PERFECT ':tg.bonus?'💰 BONUS ':'SWISH ')+'+'+val+(g.combo>1?' (×'+mult+')':''),(perfect||tg.bonus)?'#ffd166':'#3ddc84',18);
         spark(vx,vy,tg.bonus?22:14,tg.bonus?['#ffd166','#fff','#f5c542']:['#b98cff','#f5c542','#fff'],{spread:3.4}); if(tg.bonus) confetti(40);
         centerToast('+'+val+'!'+(g.combo>1?' COMBO ×'+g.combo:''),''); setTimeout(clearCenter,800); SFX.win(); buzz(20); scored=true; break; } }
       if(scored || f.y>CH+30 || f.x<-30 || f.x>CW+30){ if(!scored){ g.combo=0; SFX.lose(); } g.flying=null; nextToss(); }
