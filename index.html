@@ -340,8 +340,8 @@
    Shared treasury feeds every mode; spend it in the shop. Faith woven in.
    Mobile-first + mouse/keyboard. No external deps.
    ========================================================================= */
-const VERSION = '2.10';
-const BUILD = '2026-05-27·1737';
+const VERSION = '2.11';
+const BUILD = '2026-05-27·1916';
 const SAVE_KEY = 'ck:save:v1';
 
 /* ---------- persistence ---------- */
@@ -582,6 +582,10 @@ function openBank(){
       <div class="rk-next">purse 🪙 ${fmt(save.coins)} · 🏦 ${fmt(save.bank||0)}${debt>0?' · 💳 debt 🪙 '+fmt(debt):''} · 📈 earned ${fmt(save._interestEarned||0)}${(save._taxPaid||0)>0?' · 👑 tax '+fmt(save._taxPaid):''}</div></div></div>
     ${gained>0?`<div class="hub-tip" style="border-color:var(--green);color:var(--green)">📈 +${fmt(gained)} interest earned while you were away!</div>`:''}
     ${owed>0?`<div class="hub-tip" style="border-color:var(--red);color:var(--red)">💳 your debt grew by ${fmt(owed)} — pay it down!</div>`:''}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:2px 0 6px">
+      <div style="background:var(--bg-2);border:1px solid var(--bg-3);border-radius:10px;padding:8px 11px"><div style="font-size:10px;color:var(--muted);letter-spacing:1px">💵 GROSS INCOME</div><div style="font-weight:800;color:var(--gold-2)">${fmt(save.lifetime||0)}</div></div>
+      <div style="background:var(--bg-2);border:1px solid var(--bg-3);border-radius:10px;padding:8px 11px"><div style="font-size:10px;color:var(--muted);letter-spacing:1px">💰 NET (after 👑 tax)</div><div style="font-weight:800;color:var(--green)">${fmt(Math.max(0,(save.lifetime||0)-(save._taxPaid||0)))}</div></div>
+    </div>
     <div style="margin:8px 0 4px;font-size:11px;letter-spacing:2px;color:var(--muted)">💰 DEPOSIT · purse → bank</div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
       <button class="btn sec" onclick="bankDeposit(1000)">1K</button><button class="btn sec" onclick="bankDeposit(10000)">10K</button>
