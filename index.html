@@ -339,8 +339,8 @@
    Shared treasury feeds every mode; spend it in the shop. Faith woven in.
    Mobile-first + mouse/keyboard. No external deps.
    ========================================================================= */
-const VERSION = '2.7';
-const BUILD = '2026-05-27·1617';
+const VERSION = '2.8';
+const BUILD = '2026-05-27·1636';
 const SAVE_KEY = 'ck:save:v1';
 
 /* ---------- persistence ---------- */
@@ -416,7 +416,7 @@ const ACH = [
   ['stack15','Master Builder','🗼','Stack 15 coins high', s=>(s.best.stack||0)>=15],
   ['dice2000','Dice Daredevil','🎲','Reach a 2,000+ pot in Dice Royale', s=>(s.best.dice||0)>=2000],
   ['kingcoins','King of Coins','👑','Reach the top rank (1.5M lifetime)', s=>(s.rankIdx||0)>=RANKS.length-1],
-  ['allmodes','Kingdom Explorer','🗺️','Play all 7 games', s=>!!s._allmodes]
+  ['allmodes','Kingdom Explorer','🗺️','Play all 8 games', s=>!!s._allmodes]
 ];
 let _earned = 0;
 function totalEarned(){ return _earned; }
@@ -445,7 +445,8 @@ const MODES = [
   { id:'toss',    name:'Coin Toss',    ic:'🎯', ac:'#b98cff', desc:'Flick coins into cups. Aim, power, swish.' },
   { id:'wheel',   name:'Lucky Spin',   ic:'🎡', ac:'#ff5d6c', desc:'Spin the wheel of fortune for huge multipliers.' },
   { id:'stack',   name:'Coin Stack',   ic:'🗼', ac:'#ffd166', desc:'Time the drop. Stack the coins. Build the tallest tower.' },
-  { id:'dice',    name:'Dice Royale',  ic:'🎲', ac:'#a78bfa', desc:'Roll to grow the pot. Doubles = ×2. Bust on a 7. Cash out or ride!' }
+  { id:'dice',    name:'Dice Royale',  ic:'🎲', ac:'#a78bfa', desc:'Roll to grow the pot. Doubles = ×2. Bust on a 7. Cash out or ride!' },
+  { id:'plinko',  name:'Coin Drop',    ic:'📍', ac:'#ff9f43', desc:'Drop a coin through the pegs — ride the bounce. Edges pay ×10, center is the risk.' }
 ];
 
 /* ---------- audio (tiny WebAudio) ---------- */
@@ -624,7 +625,7 @@ window.addEventListener('resize', ()=>{ if(screen==='play' && canvasMode()) fitC
 let cur=null;            // current mode id
 let game=null;           // current mode state object
 let running=false, lastT=0;
-function canvasMode(){ return cur==='pusher'||cur==='catcher'||cur==='toss'||cur==='stack'||cur==='dice'; }
+function canvasMode(){ return cur==='pusher'||cur==='catcher'||cur==='toss'||cur==='stack'||cur==='dice'||cur==='plinko'; }
 
 function loop(t){
   if(!running){ return; }
@@ -667,7 +668,7 @@ function clearCenter(){ document.getElementById('centerToast').innerHTML=''; }
 function startMode(id){
   cur=id; save.stats.plays=(save.stats.plays||0)+1;
   save._modesPlayed=save._modesPlayed||{}; save._modesPlayed[id]=true;
-  if(Object.keys(save._modesPlayed).length>=7) save._allmodes=true;
+  if(Object.keys(save._modesPlayed).length>=MODES.length) save._allmodes=true;
   persist();
   document.getElementById('playTitle').textContent=(MODES.find(m=>m.id===id)||{}).name||'Play';
   // show/hide arenas
@@ -685,6 +686,7 @@ function startMode(id){
   else if(id==='wheel') initWheel();
   else if(id==='stack') initStack();
   else if(id==='dice') initDice();
+  else if(id==='plinko') initPlinko();
   if(canvasMode()){ requestAnimationFrame(()=>{ fitCanvas(); startLoop(); }); }
 }
 function quitToHub(){
@@ -934,6 +936,68 @@ function initToss(){
     }
   });
   game=g; centerToast('COIN TOSS','drag back from the coin & release to fling'); setTimeout(clearCenter,1500);
+}
+
+/* ========================================================================
+   8) COIN DROP (Plinko) — drop a coin through the pegs, ride the bounce to a multiplier
+   ======================================================================== */
+function initPlinko(){
+  const BETS=[50,200,1000], SLOTS=9, ROWS=10, PR=5;
+  const MULT=[10,3,1.5,0.6,0.3,0.6,1.5,3,10];   // symmetric · edges pay big, center is the risk
+  const GRAV=900;
+  const g={ bet:50, won:0, score:0, t:0, coins:[], pegs:[], slotFlash:null, _lastTick:0 };
+  const topY=CH*0.18, botY=CH*0.78, slotW=CW/SLOTS, rowGap=(botY-topY)/(ROWS-1);
+  for(let r=0;r<ROWS;r++){ const y=topY+r*rowGap, off=(r%2)?slotW*0.5:0;
+    for(let x=off;x<=CW-off+1;x+=slotW){ if(x>2&&x<CW-2) g.pegs.push({x,y}); } }
+  function drop(x){
+    if(save.coins<g.bet){ toast('not enough coins for a '+fmt(g.bet)+' bet'); return; }
+    save.coins-=g.bet; updatePurse(); persist();
+    g.coins.push({ x:Math.max(slotW*0.5,Math.min(CW-slotW*0.5,x||CW/2)), y:topY-30, vx:(Math.random()-0.5)*30, vy:0, r:13, done:false });
+    save.stats.drops=(save.stats.drops||0)+1; SFX.drop();
+  }
+  g.drop=()=>drop(CW/2);
+  function renderBetBtns(){ setControls(BETS.map(b=>`<button class="btn ${g.bet===b?'':'sec'}" onclick="game.setBet(${b})">🪙 ${fmt(b)}</button>`).join('')); }
+  g.setBet=(b)=>{ g.bet=b; renderBetBtns(); };
+  g.update=(dt)=>{ g.t+=dt;
+    for(let i=g.coins.length-1;i>=0;i--){ const c=g.coins[i];
+      c.vy+=GRAV*dt; c.x+=c.vx*dt; c.y+=c.vy*dt;
+      for(const p of g.pegs){ const dx=c.x-p.x, dy=c.y-p.y; if(dx>22||dx<-22||dy>22||dy<-22) continue;
+        const min=c.r+PR; if(dx*dx+dy*dy<min*min){ const d=Math.hypot(dx,dy)||0.01, nx=dx/d, ny=dy/d;
+          c.x=p.x+nx*min; c.y=p.y+ny*min;
+          // deflect to the side it's on (+jitter) but ALWAYS keep falling — can't stall in the pegs
+          c.vx=(nx<0?-1:1)*(70+Math.random()*70)+(Math.random()-0.5)*40;
+          c.vy=Math.max(Math.abs(c.vy)*0.55, 90);
+          const [px,py]=canvasToView(p.x,p.y); spark(px,py,4,['#f5c542','#fff'],{spread:2});
+          if(g.t-g._lastTick>0.05){ try{SFX.tick();}catch(e){} g._lastTick=g.t; }
+        } }
+      if(c.x<c.r){ c.x=c.r; c.vx=Math.abs(c.vx)*0.5; } if(c.x>CW-c.r){ c.x=CW-c.r; c.vx=-Math.abs(c.vx)*0.5; }
+      if(c.y>botY+10 && !c.done){ c.done=true;
+        const si=Math.max(0,Math.min(SLOTS-1,Math.floor(c.x/slotW))), mult=MULT[si];
+        const pay=Math.round(g.bet*mult), got=addCoins(pay); g.score+=got; g.won+=got;
+        const cx=(si+0.5)*slotW, big=mult>=3; const [vx,vy]=canvasToView(cx,botY+22);
+        popText(vx,vy,(mult>=10?'🔥 ':'')+'×'+mult+' +'+fmt(got),big?'#ffd166':mult<1?'#ff5d6c':'#3ddc84',big?20:16);
+        spark(vx,vy,big?22:10,big?['#ffd166','#fff','#f5c542']:['#f5c542','#fff'],{spread:3.4});
+        if(mult>=10){ confetti(50); SFX.big(); buzz([0,30,30,30]); } else { SFX.win(); buzz(12); }
+        g.slotFlash={si,t:0.5}; g.coins.splice(i,1);
+      } else if(c.y>CH+40){ g.coins.splice(i,1); } }
+    if(g.slotFlash){ g.slotFlash.t-=dt; if(g.slotFlash.t<=0) g.slotFlash=null; }
+    setHUD(`<div class="hud-chip"><small>WON THIS RUN</small>🪙 ${fmt(g.won)}</div><div class="hud-chip"><small>BET</small>🪙 ${fmt(g.bet)}</div>`);
+  };
+  g.draw=()=>{
+    const grd=ctx.createLinearGradient(0,0,0,CH); grd.addColorStop(0,'#1a1330'); grd.addColorStop(1,'#0a0814'); ctx.fillStyle=grd; ctx.fillRect(0,0,CW,CH);
+    ctx.fillStyle='#cdd6ea'; for(const p of g.pegs){ ctx.beginPath(); ctx.arc(p.x,p.y,PR,0,7); ctx.fill(); }
+    for(let s=0;s<SLOTS;s++){ const m=MULT[s], x=s*slotW, flash=g.slotFlash&&g.slotFlash.si===s;
+      ctx.fillStyle=m>=10?'#ff5d6c':m>=3?'#ff9f43':m>=1?'#f5c542':'#3a2c5e';
+      if(flash){ ctx.shadowColor='#fff'; ctx.shadowBlur=18; }
+      roundRect(x+2,botY+6,slotW-4,30,6); ctx.fill(); ctx.shadowBlur=0;
+      ctx.fillStyle=m>=1?'#1a1405':'#fff'; ctx.font='800 12px Arial,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('×'+m,(s+0.5)*slotW,botY+21); }
+    for(const c of g.coins) drawCoin(c.x,c.y,c.r);
+    if(!g.coins.length){ ctx.fillStyle='rgba(245,197,66,.55)'; ctx.font='700 12px Arial,sans-serif'; ctx.textAlign='center'; ctx.fillText('tap up top to drop a coin ↓', CW/2, topY-46); }
+  };
+  bindStagePointer({ down:(x,y)=>drop(x) });
+  g.onQuit=()=>{ bankRun('plinko', g.score, 0, ''); };
+  renderBetBtns();
+  game=g; centerToast('COIN DROP','tap up top · edges ×10, center is the risk'); setTimeout(clearCenter,1800);
 }
 
 /* ========================================================================
@@ -1365,7 +1429,7 @@ function openAch(){
    Medal tiers = beat YOUR best to climb 🥉→🥈→🥇. (Online/global board = future Firebase add.) */
 const HOF_TIERS = { // [bronze, silver, gold] thresholds per mode's best
   pusher:[300,1500,6000], flip:[3,7,12], catcher:[300,1000,3000],
-  toss:[600,2000,6000], wheel:[2000,8000,25000], stack:[8,18,32], dice:[500,2000,6000]
+  toss:[600,2000,6000], wheel:[2000,8000,25000], stack:[8,18,32], dice:[500,2000,6000], plinko:[1000,5000,20000]
 };
 function openHallOfFame(){
   const r=rankInfo(), s=save.stats||{};
@@ -1416,7 +1480,7 @@ function openSettings(){
 function toggleSound(){ save.sound=!save.sound; persist(); document.getElementById('swSound').classList.toggle('on',save.sound); if(save.sound) SFX.coin(); }
 function hardReset(){ if(!confirm('Wipe ALL progress — coins, skins, upgrades, goals? This cannot be undone.')) return; localStorage.removeItem(SAVE_KEY); save=JSON.parse(JSON.stringify(DEFAULT_SAVE)); _earned=0; closeSheet(); renderHub(); toast('progress reset'); }
 function openHowTo(){
-  openSheet(`<h2>👑 How to Play</h2><div class="sub">7 games, 1 treasury</div>
+  openSheet(`<h2>👑 How to Play</h2><div class="sub">8 games, 1 treasury</div>
     <div style="font-size:13px;line-height:1.7;color:var(--soft)">
     🎰 <b>Coin Pusher</b> — drag to aim, drop coins, shove the pile so gold falls off the front edge.<br>
     🪙 <b>Flip Streak</b> — call heads/tails, each win doubles your pot. Cash out before you bust!<br>
@@ -1425,7 +1489,8 @@ function openHowTo(){
     🎡 <b>Lucky Spin</b> — bet to grow the 🪙 MEGA pot, land MEGA to win it all (free spins from blessings!).<br>
     🧺 <b>Coin Catcher</b> — grab 🧲 magnet / 🛡️ shield / ✨ 2× power-ups while you catch.<br>
     🗼 <b>Coin Stack</b> — perfect drops regrow your slab + every 10 floors pays a milestone bonus.<br>
-    🎲 <b>Dice Royale</b> — roll to grow the pot, DOUBLES double it, but a 7 BUSTS you. Cash out or ride!<br><br>
+    🎲 <b>Dice Royale</b> — roll to grow the pot, DOUBLES double it, but a 7 BUSTS you. Cash out or ride!<br>
+    📍 <b>Coin Drop</b> — pick a bet, tap up top, watch your coin bounce the pegs into a multiplier. Edges pay ×10, the center's the risk.<br><br>
     Every game feeds <b>one coin bank</b> 🪙 — spend it in the 🛍️ Shop on coin skins + upgrades. Earn coins to climb the 👑 Kingdom Ranks (each rank = a permanent +% coin perk!). Claim your 🙏 Daily Blessing for a 2× boost + free spin. 💎 Gems & the ✝ Faith Corner earn ⭐ Faith Stars.
     </div>
     <div class="row-close"><button class="btn" onclick="closeSheet();save.seenHow=true;persist()">LET'S GO 🪙</button></div>`);

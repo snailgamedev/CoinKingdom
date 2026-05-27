@@ -25,7 +25,7 @@ try {
   // a how-to sheet pops on first run — close it
   if (await page.locator('#modal.on').count()) { await page.evaluate(() => closeSheet()); await page.waitForTimeout(150); }
   check('reaches hub after tapping splash', await page.locator('#hub.on').count() === 1);
-  check('hub shows 7 mode cards', await page.locator('#modeGrid .mode-card').count() === 7);
+  check('hub shows 8 mode cards', await page.locator('#modeGrid .mode-card').count() === 8);
   check('hub shows the Kingdom rank banner', await page.locator('#rankBanner .rk-name').count() === 1);
 
   const startCoins = await page.evaluate(() => save.coins);
@@ -189,6 +189,22 @@ try {
   check('Dice: rolling a 7 busts the run', diceBust === true);
   await page.waitForTimeout(700);
   await page.evaluate(() => { closeSheet(); quitToHub(); }); await page.waitForTimeout(120);
+
+  // --- 📍 COIN DROP (Plinko · 8th game) ---
+  await page.evaluate(() => startMode('plinko')); await page.waitForTimeout(200);
+  check('Coin Drop inits with a peg field', await page.evaluate(() => cur === 'plinko' && !!game && game.pegs.length > 0));
+  const plinko = await page.evaluate(() => {
+    save.coins = 50000; save.blessing = 0; game.bet = 200;
+    const before = save.coins;
+    game.drop();                                  // drop a coin from center
+    const betTaken = before - save.coins;          // 200
+    let guard = 0;
+    while (game.coins.length && guard < 800) { game.update(1/60); guard++; }
+    return { betTaken, score: game.score, settled: game.coins.length === 0 };
+  });
+  check('Coin Drop deducts the bet on drop', plinko.betTaken === 200, 'took ' + plinko.betTaken);
+  check('Coin Drop coin bounces down + pays a multiplier', plinko.settled && plinko.score > 0, 'won ' + plinko.score);
+  await page.evaluate(() => quitToHub()); await page.waitForTimeout(120);
 
   // --- SHOP ---
   await page.evaluate(() => { save.coins = 5000; openShop(); }); await page.waitForTimeout(150);
