@@ -213,6 +213,30 @@ try {
   check('Goals sheet lists achievements', await page.locator('#sheet .ach').count() >= 10);
   await page.evaluate(() => closeSheet());
 
+  // --- 👑 ADMIN THRONE ---
+  const adm = await page.evaluate(() => {
+    window.prompt = () => 'OME';                 // answer the access prompt
+    save._admin = null;                          // start signed out
+    openSettings();                              // version line is the secret trigger
+    for (let i = 0; i < 5; i++) adminTap();       // 5 taps → prompt → OME
+    const signedIn = save._admin;
+    const beforeCoins = save.coins;
+    admUnlockAll();
+    return { signedIn, gained: save.coins - beforeCoins,
+      skins: Object.keys(save.skins).length, totalSkins: Object.keys(SKINS).length,
+      rank: save.rankIdx, topRank: RANKS.length - 1,
+      goals: Object.values(save.ach).filter(Boolean).length, totalGoals: ACH.length };
+  });
+  check('Admin: OME unlocks the throne (5-tap + name)', adm.signedIn === 'OME', 'as ' + adm.signedIn);
+  check('Admin: UNLOCK ALL owns every coin skin', adm.skins === adm.totalSkins, adm.skins + '/' + adm.totalSkins);
+  check('Admin: UNLOCK ALL hits KING OF COINS rank', adm.rank === adm.topRank, 'rank ' + adm.rank);
+  check('Admin: UNLOCK ALL clears every goal', adm.goals === adm.totalGoals, adm.goals + '/' + adm.totalGoals);
+  const coda = await page.evaluate(() => { save._admin = null; window.prompt = () => 'coda'; openSettings(); for (let i = 0; i < 5; i++) adminTap(); return save._admin; });
+  check('Admin: Coda is also a valid royal', coda === 'Coda', 'as ' + coda);
+  const rej = await page.evaluate(() => { save._admin = null; window.prompt = () => 'randomdude'; openSettings(); for (let i = 0; i < 5; i++) adminTap(); return save._admin; });
+  check('Admin: a stranger is rejected', rej === null, 'got ' + rej);
+  await page.evaluate(() => { save._admin = null; persist(); closeSheet(); });
+
   // --- PERSISTENCE ---
   await page.evaluate(() => { save.coins = 1234; persist(); });
   await page.reload({ waitUntil: 'domcontentloaded' }); await page.waitForTimeout(300);

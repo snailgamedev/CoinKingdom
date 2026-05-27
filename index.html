@@ -336,8 +336,8 @@
    Shared treasury feeds every mode; spend it in the shop. Faith woven in.
    Mobile-first + mouse/keyboard. No external deps.
    ========================================================================= */
-const VERSION = '2.4';
-const BUILD = '2026-05-26·1956';
+const VERSION = '2.5';
+const BUILD = '2026-05-27·1432';
 const SAVE_KEY = 'ck:save:v1';
 
 /* ---------- persistence ---------- */
@@ -1360,10 +1360,11 @@ function openAch(){
    SETTINGS + HOW TO
    ======================================================================== */
 function openSettings(){
-  openSheet(`<h2>⚙️ Settings</h2><div class="sub">v${VERSION} · build ${BUILD}</div>
+  openSheet(`<h2>⚙️ Settings</h2><div class="sub" onclick="adminTap()" style="cursor:pointer" title="">v${VERSION} · build ${BUILD}</div>
     <div class="settings-row"><div class="sl">🔊 Sound effects</div><div class="switch ${save.sound?'on':''}" id="swSound" onclick="toggleSound()"><i></i></div></div>
     <div class="settings-row"><div class="sl">🪙 Total earned (lifetime)</div><div style="color:var(--gold-2);font-weight:800">${fmt(_earned)}</div></div>
     <div class="settings-row"><div class="sl">🎮 Games played</div><div style="font-weight:800">${save.stats.plays||0}</div></div>
+    ${save._admin?`<div style="margin-top:14px"><button class="btn wide" onclick="openAdmin()">👑 ADMIN THRONE · ${save._admin}</button></div>`:''}
     <div style="margin-top:16px"><button class="btn danger wide" onclick="hardReset()">RESET ALL PROGRESS</button></div>
     <div class="row-close"><button class="btn sec" onclick="closeSheet()">CLOSE</button></div>`);
 }
@@ -1384,6 +1385,67 @@ function openHowTo(){
     </div>
     <div class="row-close"><button class="btn" onclick="closeSheet();save.seenHow=true;persist()">LET'S GO 🪙</button></div>`);
 }
+
+/* ====================== 👑 ADMIN THRONE (OME = Eli · Coda = me) ======================
+   Secret unlock: open Settings, tap the version line 5× → type OME or Coda.
+   Keys to the kingdom — god-mode over the shared treasury. Faith woven, never forced. */
+const CK_ADMINS = ['OME','CODA'];
+let _admTaps = 0, _admTimer = null;
+function adminTap(){
+  if(save._admin){ openAdmin(); return; }           // already a royal → straight to the throne
+  _admTaps++; clearTimeout(_admTimer); _admTimer=setTimeout(()=>{ _admTaps=0; }, 1200);
+  if(_admTaps>=5){
+    _admTaps=0;
+    const name=(prompt('👑 Admin access — who goes there?')||'').trim();
+    if(!name) return;
+    if(CK_ADMINS.includes(name.toUpperCase())){
+      save._admin = name.toUpperCase()==='OME' ? 'OME' : 'Coda';
+      persist(); confetti(80); try{SFX.coin();}catch(e){}
+      toast('👑 Welcome to the throne, '+save._admin+'!', 2200);
+      openAdmin();
+    } else { toast('🚫 Not on the royal list.'); }
+  }
+}
+function openAdmin(){
+  openSheet(`<h2>👑 Admin Throne</h2><div class="sub">signed in as <b style="color:var(--gold-2)">${save._admin}</b> · the keys to the kingdom 🗝️</div>
+    <div class="settings-row" style="margin-bottom:10px"><div class="sl">🪙 Bank</div><div style="color:var(--gold-2);font-weight:800">${fmt(save.coins)}</div></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+      <button class="btn sec" onclick="admCoins(10000)">💰 +10K</button>
+      <button class="btn sec" onclick="admCoins(100000)">💰 +100K</button>
+      <button class="btn sec" onclick="admCoins(1000000)">🤑 +1M</button>
+      <button class="btn sec" onclick="admStars(50)">⭐ +50 stars</button>
+      <button class="btn sec" onclick="admMaxRank()">👑 Max rank</button>
+      <button class="btn sec" onclick="admBless()">🙏 +10 blessings</button>
+      <button class="btn sec" onclick="admSkins()">🔓 All skins</button>
+      <button class="btn sec" onclick="admUpg()">⬆️ Max upgrades</button>
+      <button class="btn sec" onclick="admGoals()">🏆 All goals</button>
+      <button class="btn" onclick="admUnlockAll()">✨ UNLOCK ALL</button>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:9px">
+      <button class="btn danger" style="flex:1" onclick="hardReset()">🧹 Wipe save</button>
+      <button class="btn sec" style="flex:1" onclick="admSignOut()">🚪 Sign out</button>
+    </div>
+    <div class="sub" style="text-align:center;margin-top:14px;font-style:italic;line-height:1.5">“To whom much is given, much will be required.” — Luke 12:48 🙏<br>even kings answer to the King.</div>
+    <div class="row-close"><button class="btn sec" onclick="closeSheet()">CLOSE</button></div>`);
+}
+function _admAfter(msg){ persist(); renderHub(); confetti(28); toast(msg, 1800); openAdmin(); }
+function admCoins(n){ addCoins(n,false); _admAfter('💰 +'+fmt(n)+' coins'); }
+function admStars(n){ save.stars=(save.stars||0)+n; _admAfter('⭐ +'+n+' Faith Stars'); }
+function admMaxRank(){ const top=RANKS[RANKS.length-1].at; if((save.lifetime||0)<top) addCoins(top-(save.lifetime||0),false); save.rankIdx=RANKS.length-1; _admAfter('👑 KING OF COINS'); }
+function admBless(){ save.blessing=(save.blessing||0)+10; _admAfter('🙏 +10 blessed plays (2× coins)'); }
+function admSkins(){ Object.keys(SKINS).forEach(k=>save.skins[k]=true); _admAfter('🔓 All '+Object.keys(SKINS).length+' coin skins'); }
+function admUpg(){ Object.keys(UPGRADES).forEach(k=>save.upg[k]=UPGRADES[k].max); _admAfter('⬆️ Every upgrade maxed'); }
+function admGoals(){ ACH.forEach(a=>save.ach[a[0]]=true); save._jackpot=true; save._allmodes=true; _admAfter('🏆 All '+ACH.length+' goals unlocked'); }
+function admUnlockAll(){
+  Object.keys(SKINS).forEach(k=>save.skins[k]=true);
+  Object.keys(UPGRADES).forEach(k=>save.upg[k]=UPGRADES[k].max);
+  ACH.forEach(a=>save.ach[a[0]]=true); save._jackpot=true; save._allmodes=true;
+  const top=RANKS[RANKS.length-1].at; if((save.lifetime||0)<top) addCoins(top-(save.lifetime||0),false); save.rankIdx=RANKS.length-1;
+  save.stars=(save.stars||0)+200; save.blessing=(save.blessing||0)+10;
+  persist(); renderHub(); confetti(120); try{SFX.coin();}catch(e){}
+  toast('✨ The whole kingdom is yours, '+save._admin+'!', 2400); openAdmin();
+}
+function admSignOut(){ save._admin=null; persist(); closeSheet(); renderHub(); toast('🚪 Signed out of the throne'); }
 
 /* ---------- modal plumbing ---------- */
 function openSheet(html, keepScroll){ const m=document.getElementById('modal'); document.getElementById('sheet').innerHTML=html; m.classList.add('on'); }
