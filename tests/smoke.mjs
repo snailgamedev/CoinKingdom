@@ -213,6 +213,22 @@ try {
   check('Goals sheet lists achievements', await page.locator('#sheet .ach').count() >= 10);
   await page.evaluate(() => closeSheet());
 
+  // --- 🏅 HALL OF FAME ---
+  const hof = await page.evaluate(() => {
+    save.best = { pusher: 6500, flip: 9, stack: 20 };  // gold pusher, silver flip
+    openHallOfFame();
+    const html = document.getElementById('sheet').innerHTML;
+    return { open: !!document.querySelector('#modal.on'),
+      hasTitle: html.includes('Hall of Fame'),
+      hasRank: html.includes(rankInfo().cur.name),
+      hasGold: html.includes('🥇'),  // pusher 6500 >= 6000 gold
+      hasModes: (html.match(/best per game/i) ? true : false) };
+  });
+  check('Hall of Fame opens', hof.open && hof.hasTitle);
+  check('Hall of Fame shows Kingdom rank', hof.hasRank);
+  check('Hall of Fame awards medal tiers (🥇 for a gold best)', hof.hasGold);
+  await page.evaluate(() => closeSheet());
+
   // --- 👑 ADMIN THRONE ---
   const adm = await page.evaluate(() => {
     window.prompt = () => 'OME';                 // answer the access prompt
