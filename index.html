@@ -272,7 +272,8 @@
         <div class="big-btn" onclick="openSettings()">⚙️ SETTINGS</div>
       </div>
       <div class="hub-row">
-        <div class="big-btn gold" onclick="openHallOfFame()" style="flex:1">🏅 HALL OF FAME — your records</div>
+        <div class="big-btn gold" onclick="openBank()">🏦 BANK</div>
+        <div class="big-btn gold" onclick="openHallOfFame()">🏅 HALL OF FAME</div>
       </div>
       <a class="arcade-link" id="arcadeLink" href="https://snailgamedev.github.io/PeakArcade/">🎮 MORE GAMES AT <b>PEAK ARCADE</b> →</a>
       <a class="arcade-link" id="wordLink" href="https://snailgamedev.github.io/PeakArcade/word.html" style="border-color:#f5c542;background:linear-gradient(90deg,rgba(245,197,66,.16),rgba(245,197,66,.03));color:#ffe8a3">✝ THE WORD — <b>the real treasure</b></a>
@@ -339,8 +340,8 @@
    Shared treasury feeds every mode; spend it in the shop. Faith woven in.
    Mobile-first + mouse/keyboard. No external deps.
    ========================================================================= */
-const VERSION = '2.8';
-const BUILD = '2026-05-27·1636';
+const VERSION = '2.9';
+const BUILD = '2026-05-27·1710';
 const SAVE_KEY = 'ck:save:v1';
 
 /* ---------- persistence ---------- */
@@ -357,6 +358,7 @@ const DEFAULT_SAVE = {
   sound: true,
   megaJackpot: 2000, freeSpins: 0,
   stats: { flips:0, drops:0, catches:0, tosses:0, spins:0, plays:0, stacks:0 },
+  bank: 0, bankTs: null, _interestEarned: 0, _taxPaid: 0,   // 🏦 real-life economy
   seenHow: false
 };
 let save = load();
@@ -518,8 +520,12 @@ function fmt(n){ n=Math.floor(n); if(n>=1e6) return (n/1e6).toFixed(n>=1e7?0:1)+
 /* ---------- economy ---------- */
 function rankBonus(){ return (save.rankIdx||0)*0.05; }   // RANK PERK: +5% coins per rank climbed
 function luckMult(){ return 1 + (save.upg.luck||0)*0.08 + rankBonus(); }
+const TAX_BRACKET=5000, TAX_RATE=0.10, BANK_RATE=0.03;   // 👑 10% tax on big single wins · 🏦 3%/day interest
 function addCoins(n, boostable=true){
   n = Math.round(n * luckMult() * (boostable && save.blessing>0 ? 2 : 1));
+  // 👑 KINGDOM TAX — real-life income tax, but ONLY on the big single wins (small earns stay untaxed; admin grants exempt)
+  if(boostable && n>=TAX_BRACKET){ const tax=Math.round(n*TAX_RATE); n-=tax; save._taxPaid=(save._taxPaid||0)+tax;
+    if(typeof toast==='function') toast('👑 Kingdom tax —'+fmt(tax)+' ('+Math.round(TAX_RATE*100)+'% on big wins) · stash it in the 🏦 Bank to grow it'); }
   save.coins += n; _earned += Math.max(0,n);
   if(n>0){ save.lifetime=(save.lifetime||0)+n; const ri=rankIndexFor(save.lifetime); if(ri>(save.rankIdx||0)){ save.rankIdx=ri; rankUp(RANKS[ri]); } }
   updatePurse(); persist(); checkAch(); return n;
@@ -533,6 +539,35 @@ function rankUp(rank){
 }
 function spendCoins(n){ if(save.coins<n) return false; save.coins-=n; updatePurse(); persist(); return true; }
 function addStars(n){ save.stars+=n; updatePurse(); persist(); checkAch(); }
+/* 🏦 THE ROYAL BANK — real-life savings: deposit gold, earn daily compounding interest (capped 30d so being away doesn't explode it) */
+function accrueInterest(){
+  if(!save.bank||save.bank<=0){ if(!save.bankTs) save.bankTs=Date.now(); return 0; }
+  const now=Date.now(); let days=(now-(save.bankTs||now))/86400000; if(days<=0) return 0; days=Math.min(days,30);
+  const before=save.bank; save.bank=Math.round(save.bank*Math.pow(1+BANK_RATE,days)); save.bankTs=now;
+  const gained=save.bank-before; if(gained>0){ save._interestEarned=(save._interestEarned||0)+gained; persist(); }
+  return gained;
+}
+function bankDeposit(n){ accrueInterest(); if(n==='all') n=save.coins; n=Math.min(n,save.coins); if(n<=0){ toast('nothing to deposit 🪙'); return; } save.coins-=n; save.bank=(save.bank||0)+n; if(!save.bankTs) save.bankTs=Date.now(); updatePurse(); persist(); try{SFX.coin();}catch(e){} openBank(); }
+function bankWithdraw(n){ accrueInterest(); if(n==='all') n=save.bank||0; n=Math.min(n,save.bank||0); if(n<=0){ toast('the bank is empty 🏦'); return; } save.bank-=n; save.coins+=n; updatePurse(); persist(); try{SFX.coin();}catch(e){} openBank(); }
+function openBank(){
+  const gained=accrueInterest();
+  openSheet(`<h2>🏦 The Royal Bank</h2><div class="sub">stash your gold — it earns ${Math.round(BANK_RATE*100)}% interest every day 📈</div>
+    <div class="rank-banner" style="margin:6px 0 10px"><div class="rk-ic">🏦</div><div class="rk-body">
+      <div class="rk-name">Balance · 🪙 ${fmt(save.bank||0)}</div>
+      <div class="rk-next">purse: 🪙 ${fmt(save.coins)} · interest earned all-time: 🪙 ${fmt(save._interestEarned||0)}${(save._taxPaid||0)>0?' · 👑 tax paid: 🪙 '+fmt(save._taxPaid):''}</div></div></div>
+    ${gained>0?`<div class="hub-tip" style="border-color:var(--green);color:var(--green)">📈 +${fmt(gained)} interest earned while you were away!</div>`:''}
+    <div style="margin:8px 0 4px;font-size:11px;letter-spacing:2px;color:var(--muted)">💰 DEPOSIT · purse → bank</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
+      <button class="btn sec" onclick="bankDeposit(1000)">1K</button><button class="btn sec" onclick="bankDeposit(10000)">10K</button>
+      <button class="btn sec" onclick="bankDeposit(100000)">100K</button><button class="btn" onclick="bankDeposit('all')">ALL</button></div>
+    <div style="margin:12px 0 4px;font-size:11px;letter-spacing:2px;color:var(--muted)">🏧 WITHDRAW · bank → purse</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
+      <button class="btn sec" onclick="bankWithdraw(1000)">1K</button><button class="btn sec" onclick="bankWithdraw(10000)">10K</button>
+      <button class="btn sec" onclick="bankWithdraw(100000)">100K</button><button class="btn" onclick="bankWithdraw('all')">ALL</button></div>
+    <div class="sub" style="text-align:center;margin-top:12px;line-height:1.5">💸 Real-life money moves: single wins over ${fmt(TAX_BRACKET)} get a ${Math.round(TAX_RATE*100)}% 👑 Kingdom tax — but gold in the Bank just <b>grows, tax-free</b>.</div>
+    <div class="sub" style="text-align:center;margin-top:6px;font-style:italic">“The plans of the diligent lead surely to abundance.” — Proverbs 21:5 🙏</div>
+    <div class="row-close"><button class="btn sec" onclick="closeSheet()">CLOSE</button></div>`);
+}
 function updatePurse(){
   ['purseCoins','playPurse'].forEach(id=>{ const e=document.getElementById(id); if(e){ e.querySelector('b').textContent=fmt(save.coins); e.classList.remove('pop'); void e.offsetWidth; e.classList.add('pop'); }});
   const st=document.getElementById('purseStars'); if(st) st.querySelector('b').textContent=fmt(save.stars);
@@ -1567,6 +1602,7 @@ document.getElementById('modal').addEventListener('click', e=>{ if(e.target.id==
 // whole hub (looked like a freeze) — hide it; the hub's own ✕ button handles return.
 const EMBEDDED = (()=>{ try{ return window.self !== window.top; }catch(e){ return true; } })();
 function boot(){
+  accrueInterest();   // 🏦 bank gold grows while you're away
   const [vt,vr]=verseOfDay();
   document.getElementById('splashVerse').innerHTML=vt+'<br><span style="color:var(--gold)">— '+vr+'</span>';
   document.getElementById('splashFoot').textContent='v'+VERSION+' · build '+BUILD;

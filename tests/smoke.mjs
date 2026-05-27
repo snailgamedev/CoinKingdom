@@ -245,6 +245,27 @@ try {
   check('Hall of Fame awards medal tiers (🥇 for a gold best)', hof.hasGold);
   await page.evaluate(() => closeSheet());
 
+  // --- 🏦 ROYAL BANK + real-life economy ---
+  const bank = await page.evaluate(() => {
+    save.coins = 10000; save.bank = 0; save.bankTs = Date.now(); save._interestEarned = 0;
+    bankDeposit(5000);                                  // purse 5000, bank 5000
+    const afterDep = { coins: save.coins, bank: save.bank };
+    save.bankTs = Date.now() - 2 * 86400000;             // pretend 2 days passed
+    const gained = accrueInterest();                     // ~3%/day compounding on 5000
+    bankWithdraw('all');
+    return { afterDep, gained, finalBank: save.bank, finalCoins: save.coins };
+  });
+  check('Bank: deposit moves coins purse→bank', bank.afterDep.coins === 5000 && bank.afterDep.bank === 5000);
+  check('Bank: earns daily interest', bank.gained > 0, '+' + bank.gained + ' over 2 days');
+  check('Bank: withdraw-all empties the bank', bank.finalBank === 0);
+  const tax = await page.evaluate(() => {
+    save.coins = 0; save.rankIdx = 0; save.blessing = 0; save.upg = {}; save._taxPaid = 0;
+    const got = addCoins(10000);                         // big win → taxed 10%
+    return { got, taxPaid: save._taxPaid };
+  });
+  check('Kingdom tax skims 10% of a big win', tax.got === 9000 && tax.taxPaid === 1000, 'net ' + tax.got + ', tax ' + tax.taxPaid);
+  await page.evaluate(() => { closeSheet(); save.bank = 0; save.coins = 100; persist(); });
+
   // --- 👑 ADMIN THRONE ---
   const adm = await page.evaluate(() => {
     window.prompt = () => 'OME';                 // answer the access prompt
