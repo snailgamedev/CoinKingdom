@@ -1,0 +1,13 @@
+{
+  "name": "Coin Kingdom",
+  "short_name": "CK",
+  "description": "Play Coin Kingdom — free, no download.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b0a14",
+  "theme_color": "#f5c542",
+  "categories": ["games"],
+  "icons": [{"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}
