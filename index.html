@@ -340,8 +340,8 @@
    Shared treasury feeds every mode; spend it in the shop. Faith woven in.
    Mobile-first + mouse/keyboard. No external deps.
    ========================================================================= */
-const VERSION = '2.11';
-const BUILD = '2026-05-27·1916';
+const VERSION = '2.12';
+const BUILD = '2026-05-27·2058';
 const SAVE_KEY = 'ck:save:v1';
 
 /* ---------- persistence ---------- */
@@ -1020,6 +1020,7 @@ function initPlinko(){
   for(let r=0;r<ROWS;r++){ const y=topY+r*rowGap, off=(r%2)?slotW*0.5:0;
     for(let x=off;x<=CW-off+1;x+=slotW){ if(x>2&&x<CW-2) g.pegs.push({x,y}); } }
   function drop(x){
+    if(g.coins.length>=16){ toast('whoa — let some coins land first! 🪙'); return; }   // cap so rapid drops can't pile up
     if(save.coins<g.bet){ toast('not enough coins for a '+fmt(g.bet)+' bet'); return; }
     save.coins-=g.bet; updatePurse(); persist();
     g.coins.push({ x:Math.max(slotW*0.5,Math.min(CW-slotW*0.5,x||CW/2)), y:topY-30, vx:(Math.random()-0.5)*30, vy:0, r:13, done:false });
@@ -1034,9 +1035,11 @@ function initPlinko(){
       for(const p of g.pegs){ const dx=c.x-p.x, dy=c.y-p.y; if(dx>22||dx<-22||dy>22||dy<-22) continue;
         const min=c.r+PR; if(dx*dx+dy*dy<min*min){ const d=Math.hypot(dx,dy)||0.01, nx=dx/d, ny=dy/d;
           c.x=p.x+nx*min; c.y=p.y+ny*min;
-          // deflect to the side it's on (+jitter) but ALWAYS keep falling — can't stall in the pegs
-          c.vx=(nx<0?-1:1)*(70+Math.random()*70)+(Math.random()-0.5)*40;
-          c.vy=Math.max(Math.abs(c.vy)*0.55, 90);
+          // random 50/50 deflect (real plinko) but STEER OFF the walls so coins never hug/pile an edge (the right-wall glitch)
+          let dir = Math.random()<0.5?-1:1;
+          if(c.x < CW*0.12) dir = 1; else if(c.x > CW*0.88) dir = -1;   // near a wall → push back toward center
+          c.vx = dir*(70+Math.random()*70);
+          c.vy = Math.max(Math.abs(c.vy)*0.55, 90);
           const [px,py]=canvasToView(p.x,p.y); spark(px,py,4,['#f5c542','#fff'],{spread:2});
           if(g.t-g._lastTick>0.05){ try{SFX.tick();}catch(e){} g._lastTick=g.t; }
         } }
