@@ -277,7 +277,27 @@ try {
   check('Loan: borrowing adds coins + debt', loan.afterBorrow.coins === 30000 && loan.afterBorrow.loan === 10000);
   check('Loan: debt grows 5%/day (faster than savings)', loan.grew > 0, '+' + loan.grew);
   check('Loan: pay-off clears the debt', loan.finalLoan === 0);
-  await page.evaluate(() => { closeSheet(); save.bank = 0; save.loan = 0; save.coins = 100; persist(); });
+  // 💼 paycheck · 📈 market · 💳 credit
+  const econ = await page.evaluate(() => {
+    save.coins = 100000; save.rankIdx = 2; save.payTs = null;
+    const before = save.coins; claimPay(); const paid = save.coins - before;     // 500 + 2*750 = 2000 (+rank perk)
+    const blocked = (()=>{ const c=save.coins; claimPay(); return save.coins - c; })();  // 2nd claim same day = 0
+    // market: ts=today so mktTick is a no-op → deterministic price for the test
+    save.mkt = { price:100, ts: todayStr(), shares:0, basis:0 };
+    mktBuy(10000);                                            // 100 shares, basis 10000 (no tick)
+    const heldShares = Math.round(save.mkt.shares);
+    save.mkt.price = 150;                                     // simulate the market rising 50% (ts still today → sell won't re-tick)
+    const cBefore = save.coins; mktSell(); const cashed = save.coins - cBefore;    // ≥15000 (profit, +rank perk)
+    // credit: borrowing dips, repaying builds
+    save.credit = 620; save.coins = 50000; save.bank = 0; save.loan = 0; save.loanTs = Date.now();
+    borrow(20000); const afterBorrow = save.credit;          // dipped
+    repay(20000); const afterRepay = save.credit;            // built back up
+    return { paid, blocked, heldShares, cashed, afterBorrow, afterRepay };
+  });
+  check('💼 Paycheck pays (rank-scaled), once/day', econ.paid >= 2000 && econ.blocked === 0, 'paid ' + econ.paid + ', 2nd ' + econ.blocked);
+  check('📈 Market: buy shares then sell at a higher price = profit', econ.heldShares === 100 && econ.cashed > 12000, 'cashed ' + econ.cashed);
+  check('💳 Credit: borrowing dips it, repaying builds it', econ.afterBorrow < 620 && econ.afterRepay > econ.afterBorrow, 'borrow ' + econ.afterBorrow + ' → repay ' + econ.afterRepay);
+  await page.evaluate(() => { closeSheet(); save.bank = 0; save.loan = 0; save.mkt = {price:100,ts:null,shares:0,basis:0}; save.coins = 100; persist(); });
 
   // --- 👑 ADMIN THRONE ---
   const adm = await page.evaluate(() => {

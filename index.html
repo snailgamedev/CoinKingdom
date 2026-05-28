@@ -340,8 +340,8 @@
    Shared treasury feeds every mode; spend it in the shop. Faith woven in.
    Mobile-first + mouse/keyboard. No external deps.
    ========================================================================= */
-const VERSION = '2.12';
-const BUILD = '2026-05-27·2058';
+const VERSION = '2.13';
+const BUILD = '2026-05-27·2146';
 const SAVE_KEY = 'ck:save:v1';
 
 /* ---------- persistence ---------- */
@@ -360,10 +360,12 @@ const DEFAULT_SAVE = {
   stats: { flips:0, drops:0, catches:0, tosses:0, spins:0, plays:0, stacks:0 },
   bank: 0, bankTs: null, _interestEarned: 0, _taxPaid: 0,   // 🏦 real-life economy
   loan: 0, loanTs: null, _interestPaid: 0,                  // 💳 debt
+  credit: 620, payTs: null,                                 // 💳 credit score · 💼 last paycheck day
+  mkt: { price: 100, ts: null, shares: 0, basis: 0 },       // 📈 the Coin Market (invest)
   seenHow: false
 };
 let save = load();
-function load(){ try{ const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if(s) return Object.assign(JSON.parse(JSON.stringify(DEFAULT_SAVE)), s, { upg:Object.assign({},s.upg), skins:Object.assign({classic:true},s.skins), ach:Object.assign({},s.ach), best:Object.assign({},s.best), stats:Object.assign({},DEFAULT_SAVE.stats,s.stats) }); }catch(e){} return JSON.parse(JSON.stringify(DEFAULT_SAVE)); }
+function load(){ try{ const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if(s) return Object.assign(JSON.parse(JSON.stringify(DEFAULT_SAVE)), s, { upg:Object.assign({},s.upg), skins:Object.assign({classic:true},s.skins), ach:Object.assign({},s.ach), best:Object.assign({},s.best), stats:Object.assign({},DEFAULT_SAVE.stats,s.stats), mkt:Object.assign({price:100,ts:null,shares:0,basis:0},s.mkt) }); }catch(e){} return JSON.parse(JSON.stringify(DEFAULT_SAVE)); }
 function persist(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify(save)); }catch(e){} }
 
 /* ---------- content: skins, upgrades, verses, achievements ---------- */
@@ -557,8 +559,20 @@ function accrueInterest(){
 function bankDeposit(n){ accrueInterest(); if(n==='all') n=save.coins; n=Math.min(n,save.coins); if(n<=0){ toast('nothing to deposit 🪙'); return; } save.coins-=n; save.bank=(save.bank||0)+n; if(!save.bankTs) save.bankTs=Date.now(); updatePurse(); persist(); try{SFX.coin();}catch(e){} openBank(); }
 function bankWithdraw(n){ accrueInterest(); if(n==='all') n=save.bank||0; n=Math.min(n,save.bank||0); if(n<=0){ toast('the bank is empty 🏦'); return; } save.bank-=n; save.coins+=n; updatePurse(); persist(); try{SFX.coin();}catch(e){} openBank(); }
 /* 💳 LOANS — borrow against your worth, but debt compounds FASTER than savings (5%/day) · real-life money */
-function netWorth(){ return (save.coins||0)+(save.bank||0)-(save.loan||0); }
-function loanCap(){ return Math.max(10000, Math.round(((save.coins||0)+(save.bank||0))*1.5)); }   // credit limit = 1.5× liquid
+function netWorth(){ return (save.coins||0)+(save.bank||0)+mktValue()-(save.loan||0); }
+// 💳 CREDIT SCORE (300–850) — repaying builds it, borrowing dips it · gates your credit limit
+function creditScore(){ return Math.max(300, Math.min(850, Math.round(save.credit||620))); }
+function creditTier(){ const c=creditScore(); return c>=800?'Excellent 🟢':c>=740?'Very Good 🟢':c>=670?'Good 🟡':c>=580?'Fair 🟠':'Poor 🔴'; }
+function loanCap(){ return Math.max(10000, Math.round(((save.coins||0)+(save.bank||0))*1.5*(creditScore()/620))); }   // better credit → bigger limit
+// 💼 DAILY PAYCHECK — your Kingdom rank pays a salary, once a day
+function paycheckAmount(){ return 500 + (save.rankIdx||0)*750; }
+function canClaimPay(){ return save.payTs!==todayStr(); }
+function claimPay(){ if(!canClaimPay()){ toast('💼 already collected your pay today — back tomorrow'); return; } const amt=paycheckAmount(); save.payTs=todayStr(); persist(); addCoins(amt); try{SFX.coin();}catch(e){} toast('💼 PAYDAY! +🪙 '+fmt(amt)+' (your rank salary)'); openBank(); }
+// 📈 THE COIN MARKET — price random-walks each day; invest for risk/reward beyond the safe Bank
+function mktTick(){ const m=save.mkt; const t=todayStr(); if(m.ts===t) return; const drift=(Math.random()-0.45)*0.32; m.price=Math.max(10,Math.round((m.price||100)*(1+drift))); m.ts=t; persist(); }
+function mktValue(){ const m=save.mkt||{}; return Math.round((m.shares||0)*(m.price||100)); }
+function mktBuy(n){ mktTick(); const m=save.mkt; if(n==='all') n=save.coins; n=Math.min(n,save.coins); if(n<=0){ toast('no coins to invest 📈'); return; } m.shares=(m.shares||0)+n/m.price; m.basis=(m.basis||0)+n; save.coins-=n; updatePurse(); persist(); try{SFX.coin();}catch(e){} toast('📈 invested 🪙 '+fmt(n)+' @ '+fmt(m.price)+'/share'); openBank(); }
+function mktSell(){ mktTick(); const m=save.mkt; if(!m.shares||m.shares<=0){ toast('no shares to sell 📉'); return; } const val=mktValue(), gain=val-(m.basis||0); m.shares=0; m.basis=0; addCoins(val,false); try{SFX.coin();}catch(e){} toast(gain>=0?('📈 cashed out 🪙 '+fmt(val)+' · +'+fmt(gain)+' profit! 🤑'):('📉 cashed out 🪙 '+fmt(val)+' · '+fmt(gain)+' loss')); openBank(); }
 function accrueLoan(){
   if(!save.loan||save.loan<=0){ if(!save.loanTs) save.loanTs=Date.now(); return 0; }
   const now=Date.now(); let days=(now-(save.loanTs||now))/86400000; if(days<=0) return 0; days=Math.min(days,30);
@@ -568,14 +582,19 @@ function accrueLoan(){
 }
 function borrow(n){ accrueLoan(); const avail=loanCap()-(save.loan||0); n=Math.min(n,avail);
   if(n<=0){ toast('🚫 credit maxed — cap is 🪙 '+fmt(loanCap())); return; }
-  save.loan=(save.loan||0)+n; save.coins+=n; if(!save.loanTs) save.loanTs=Date.now(); updatePurse(); persist(); try{SFX.coin();}catch(e){}
+  save.loan=(save.loan||0)+n; save.coins+=n; if(!save.loanTs) save.loanTs=Date.now();
+  save.credit=Math.max(300,(save.credit||620)-8);   // taking on debt dips your score
+  updatePurse(); persist(); try{SFX.coin();}catch(e){}
   toast('💳 borrowed 🪙 '+fmt(n)+' · debt grows '+Math.round(LOAN_RATE*100)+'%/day — pay it back!'); openBank(); }
 function repay(n){ accrueLoan(); if(n==='all') n=Math.min(save.loan||0,save.coins); n=Math.min(n,save.loan||0,save.coins);
   if(n<=0){ toast((save.loan||0)>0?'not enough coins to repay':'🎉 no debt to pay'); return; }
-  save.loan-=n; save.coins-=n; updatePurse(); persist(); try{SFX.coin();}catch(e){}
-  toast('✅ repaid 🪙 '+fmt(n)+((save.loan||0)<=0?' · debt CLEARED! 🙌':' · 🪙 '+fmt(save.loan)+' left')); openBank(); }
+  save.loan-=n; save.coins-=n;
+  save.credit=Math.min(850,(save.credit||620)+Math.round(n/1500));   // repaying BUILDS your credit
+  updatePurse(); persist(); try{SFX.coin();}catch(e){}
+  toast('✅ repaid 🪙 '+fmt(n)+((save.loan||0)<=0?' · debt CLEARED! 🙌 credit up':' · 🪙 '+fmt(save.loan)+' left')); openBank(); }
 function openBank(){
-  const gained=accrueInterest(); const owed=accrueLoan(); const debt=save.loan||0; const nw=netWorth();
+  const gained=accrueInterest(); const owed=accrueLoan(); const debt=save.loan||0; mktTick(); const nw=netWorth();
+  const m=save.mkt, mval=mktValue(), mgain=mval-(m.basis||0), payOk=canClaimPay();
   openSheet(`<h2>🏦 The Royal Bank</h2><div class="sub">save gold (earns ${Math.round(BANK_RATE*100)}%/day 📈) · borrow gold (costs ${Math.round(LOAN_RATE*100)}%/day 💳)</div>
     <div class="rank-banner" style="margin:6px 0 10px"><div class="rk-ic">🏦</div><div class="rk-body">
       <div class="rk-name">Net Worth · 🪙 ${fmt(nw)}</div>
@@ -599,7 +618,18 @@ function openBank(){
       <button class="btn sec" onclick="borrow(5000)">＋5K</button><button class="btn sec" onclick="borrow(25000)">＋25K</button>
       <button class="btn ${debt>0?'':'sec'}" onclick="repay(10000)" ${debt>0?'':'disabled'}>−10K</button>
       <button class="btn ${debt>0?'':'sec'}" onclick="repay('all')" ${debt>0?'':'disabled'}>PAY OFF</button></div>
-    <div class="sub" style="text-align:center;margin-top:12px;line-height:1.5">💸 Real money moves: big single wins get a <b>progressive 👑 tax</b> (8% → 15% → 25%) · savings grow tax-free · debt grows faster than savings, so borrow wisely.</div>
+    <div style="margin:14px 0 4px;font-size:11px;letter-spacing:2px;color:var(--muted)">💼 PAYCHECK · your rank salary, once a day</div>
+    <button class="btn ${payOk?'':'sec'}" style="width:100%" onclick="claimPay()" ${payOk?'':'disabled'}>${payOk?'💼 COLLECT PAY · +🪙 '+fmt(paycheckAmount()):'💼 collected today — back tomorrow'}</button>
+    <div style="margin:14px 0 4px;font-size:11px;letter-spacing:2px;color:var(--muted)">📈 COIN MARKET · 🪙 ${fmt(m.price)}/share${m.shares>0?' · you hold 🪙 '+fmt(mval)+' ('+(mgain>=0?'+':'')+fmt(mgain)+')':''}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
+      <button class="btn sec" onclick="mktBuy(5000)">📈 Buy 5K</button>
+      <button class="btn sec" onclick="mktBuy(25000)">📈 Buy 25K</button>
+      <button class="btn ${m.shares>0?'':'sec'}" onclick="mktSell()" ${m.shares>0?'':'disabled'}>💸 Sell all</button></div>
+    <div style="margin:14px 0 4px;font-size:11px;letter-spacing:2px;color:var(--muted)">💳 CREDIT SCORE</div>
+    <div style="background:var(--bg-2);border:1px solid var(--bg-3);border-radius:10px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <div><div style="font-family:var(--arcade);font-size:20px;color:var(--gold-2)">${creditScore()}</div><div style="font-size:10px;color:var(--muted)">${creditTier()} · 300–850</div></div>
+      <div style="font-size:10px;color:var(--soft);text-align:right;max-width:58%">repay loans to build it 📈 — a higher score raises your credit limit</div></div>
+    <div class="sub" style="text-align:center;margin-top:14px;line-height:1.5">💸 Real money moves: 📈 invest for risk/reward · 💼 collect your daily pay · 💳 build credit by repaying · progressive 👑 tax on big wins · savings grow tax-free.</div>
     <div class="sub" style="text-align:center;margin-top:6px;font-style:italic">“The rich ruleth over the poor, and the borrower is servant to the lender.” — Proverbs 22:7 🙏</div>
     <div class="row-close"><button class="btn sec" onclick="closeSheet()">CLOSE</button></div>`);
 }
