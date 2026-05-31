@@ -30,7 +30,11 @@
 
   /* ---------- top bar ---------- */
   .topbar{ display:flex; align-items:center; gap:10px; padding:12px 14px; padding-top:max(12px,env(safe-area-inset-top)); }
-  .tb-back{ width:42px; height:42px; flex:0 0 auto; border-radius:12px; border:1px solid var(--bg-3); background:var(--bg-2); color:var(--gold); font-size:20px; cursor:pointer; }
+  .tb-back{ width:48px; height:48px; flex:0 0 auto; border-radius:14px; border:1.5px solid var(--gold);
+    background:linear-gradient(180deg,var(--gold),#b8860b); color:#1a1608; font-size:27px; font-weight:900; line-height:1;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    box-shadow:0 6px 18px -6px var(--gold), inset 0 1px 0 rgba(255,255,255,.3); transition:transform .12s, filter .15s; }
+  .tb-back:hover{ filter:brightness(1.1); }
   .tb-back:active{ transform:scale(.92); }
   .tb-title{ flex:1 1 auto; min-width:0; font-family:var(--arcade); font-size:clamp(14px,4.2vw,22px); letter-spacing:.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .purse{ display:flex; align-items:center; gap:6px; background:linear-gradient(180deg,#2a2410,#1a1608); border:1px solid var(--gold-deep); border-radius:999px; padding:7px 13px; box-shadow:inset 0 1px 0 rgba(255,255,255,.08); }
@@ -295,7 +299,7 @@ if('serviceWorker' in navigator){const had=!!navigator.serviceWorker.controller;
   <!-- PLAY STAGE -->
   <div class="screen" id="play">
     <div class="topbar">
-      <div class="tb-back" onclick="quitToHub()">‹</div>
+      <div class="tb-back" onclick="quitToHub()" aria-label="Back to Peak Arcade">←</div>
       <div class="tb-title" id="playTitle">Mode</div>
       <div class="purse" id="playPurse"><span class="pc">🪙</span><b>0</b></div>
     </div>
@@ -349,7 +353,7 @@ if('serviceWorker' in navigator){const had=!!navigator.serviceWorker.controller;
    Shared treasury feeds every mode; spend it in the shop. Faith woven in.
    Mobile-first + mouse/keyboard. No external deps.
    ========================================================================= */
-const VERSION = '2.13';
+const VERSION = '2.14';
 const BUILD = '2026-05-27·2146';
 const SAVE_KEY = 'ck:save:v1';
 
