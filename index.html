@@ -469,7 +469,13 @@ const MODES = [
 
 /* ---------- audio (tiny WebAudio) ---------- */
 let actx=null;
-function ac(){ if(!actx){ try{ actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } return actx; }
+function ac(){ if(!actx){ try{ actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } if(actx && actx.state==='suspended'){ actx.resume().catch(()=>{}); } return actx; }
+/* 🔊 AUDIO UNLOCK — keeps the treasury loud · no more cut-outs (CAGEE: cover all gates, even sound) */
+(function audioUnlock(){
+  const kick=()=>{ try{ const c=ac(); if(c && c.state==='suspended') c.resume().catch(()=>{}); }catch(e){} };
+  ['pointerdown','touchstart','keydown','click'].forEach(ev=>window.addEventListener(ev,kick,{passive:true}));
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) kick(); });
+})();
 function blip(freq=440, dur=0.08, type='square', vol=0.12){
   if(!save.sound) return; const c=ac(); if(!c) return;
   const o=c.createOscillator(), g=c.createGain();
